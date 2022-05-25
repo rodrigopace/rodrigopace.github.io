@@ -82,7 +82,8 @@ kramdown:
 include: [".htaccess"]
 exclude: ["lib", "config.rb", "Capfile", "config", "log", "Rakefile", "Rakefile.rb", "tmp", "less", "*.sublime-project", "*.sublime-workspace", "test", "spec", "Gruntfile.js", "package.json", "node_modules", "Gemfile", "Gemfile.lock", "LICENSE", "README.md"]
 
-theme: jekyll-theme-midnight
+#theme: jekyll-theme-midnight
+remote_theme: pages-themes/midnight@v0.2.0
 
 plugins:
   - jekyll-last-modified-at
