@@ -2,13 +2,13 @@
 
 title: Head in the Clouds
 locale: en_US
-logo: # filename of a logo image that has been placed into your images directory
+logo: # no logo
 
 # Enter the following platform usernames if you would like for them to appear on your site.
 owner:
-  name: Kenneth G. Hartman
-  avatar: Ken-2021.jpg
-  bio: "Security Consultant &amp;&nbsp;</br>Certified SANS Instructor"
+  name: Head in the Clouds
+  avatar: Cloud_Ace_Final.png
+  bio: "with Kenneth G. Hartman<p>Certified SANS Instructor"
   email: kgh@kennethghartman.com
   # Do not include the @ symbol in your Twitter username
   twitter: kennethghartman
@@ -42,7 +42,8 @@ owner:
 
 # The following adjust the accents for your site. If you would like to further edit colors, fonts, font sizes, etc.
 # you may do so in _sass/variables.scss
-highlight-color: '#CC0000'
+#highlight-color: '#CC0000'
+highlight-color: '#ff8800'
 lowlight-color: '#000'
 
   # NOTE: If you would like your site to be licensed under a creative commons license, uncomment the 'yes' next to the type of license you wish to use.
@@ -63,6 +64,14 @@ plugins:
   - jekyll-sitemap
   - jekyll-seo-tag
 
+collections:
+  episodes:
+    output: true
+collections_dir: docs
+
+base_url: ""
+url: "https://rodrigopace.github.io"
+
 kramdown:
   auto_ids: true
   footnote_nr: 1
@@ -73,4 +82,12 @@ kramdown:
 include: [".htaccess"]
 exclude: ["lib", "config.rb", "Capfile", "config", "log", "Rakefile", "Rakefile.rb", "tmp", "less", "*.sublime-project", "*.sublime-workspace", "test", "spec", "Gruntfile.js", "package.json", "node_modules", "Gemfile", "Gemfile.lock", "LICENSE", "README.md"]
 
-theme: jekyll-theme-midnight
+#theme: jekyll-theme-midnight
+remote_theme: pages-themes/midnight@v0.2.0
+
+plugins:
+  - jekyll-last-modified-at
+
+# Optional. The default date format, used if none is specified in the tag.
+last-modified-at:
+    date-format: '%y-%b-%d'
