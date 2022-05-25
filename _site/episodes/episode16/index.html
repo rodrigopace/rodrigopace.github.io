@@ -1,0 +1,1847 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 16 - Introducing Github Codespaces - Dev Environments as Code &mdash; Head in the Clouds</title>
+<meta name="description" content="16 - Introducing Github Codespaces - Dev Environments as Code
+
+
+
+Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code”
+
+In prior episodes of head in the Clouds, we have talked about the benefits of Infrastructure as Code (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day?
+
+That is the idea behind Development Environments as Code. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode.
+
+Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to Security Testing Environments as Code or Learning Environments as Code or perhaps it makes more sense to just think in terms of Environments as Code. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work.
+
+Setup
+
+To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.”
+
+Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now.
+
+The Default Codespace
+
+Great, now we can create a new repository that is owned by our new organization. Call the new repo space1 or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button.
+
+Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code:
+
+print("Hello World!")
+
+
+And then click the “Commit new file” button.
+
+Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out.
+
+Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup.
+
+Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory.
+
+The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container.
+
+At the prompt, type ls and notice that the three files from the repository are shown. We can even run the python program by typing python hello.py
+
+Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change.
+
+Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane:
+
+git status
+git add hello.py
+git commit -m "revised hello.py"
+git push
+
+
+
+We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option.
+
+Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace.
+
+To prove that we have root access, type sudo su
+
+very cool! Type exit to lower our privilege level back down.
+
+The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands:
+
+which aws az gcloud
+
+
+Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days?
+
+Is Terraform installed?
+
+which terraform
+
+
+looks like it isn’t installed either.
+
+The default image definition is maintained at https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux, so consult this repo to learn more about it.
+
+There are many more standard definitions to choose from as well. There can be seen at https://github.com/microsoft/vscode-dev-containers/tree/main/containers
+
+Customizing a Codespace with Dotfiles
+
+If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup.
+
+One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period.
+
+There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a public repository named “dotfiles” in our personal Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us.
+
+Create a Dotfile Repository
+
+In your personal github account, create a new public repository named “dotfiles.” Next, create a file named setup.sh in the new repository that contains the following lines:
+
+#!/bin/bash
+# Install Terraform
+sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+sudo apt update &amp;&amp; sudo apt install terraform
+
+
+Enable Codespaces to Use Dotfiles
+
+The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox.
+
+Test to Confirm the Dotfiles script executed.
+
+To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of  selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.”
+
+Now, click the “New Codespace” button and then click “Create codespace.”
+
+Once the prompt apears, run the following command to confirm that terraform is installed.
+
+which terraform
+
+
+And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult it.
+
+To see if our dotfiles were cloned, we can run:
+
+ls -la /workspaces/.codespaces/.persistedshare/dotfiles
+
+
+Hmm, it looks like it was cloned. Next, let’s check the creation log:
+
+less /workspaces/.codespaces/.persistedshare/creation.log
+
+
+Well, it looks like the issue is that our startup.sh script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics.
+
+We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one.
+
+Now when we run which terraform we see that it is indeed installed.
+
+Customizing Codespaces with a Custom Container
+
+The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image.
+
+The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15.
+
+To experience this, create a new repository named space2 that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.”
+
+Create a file called .devcontainer.json and add in the following content:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep15"
+}
+
+
+Then commit the change.
+
+Note: Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my hitc-tools repo and build your own custom images derived on that.
+
+Test the Custom Container in Codespaces
+
+To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces.
+
+Once the prompt appears and the Dotfiles configuration completes, run the following command:
+
+which aws az gcloud terraform
+
+
+and we should see the following output:
+
+/usr/local/bin/aws
+/usr/bin/az
+/usr/bin/gcloud
+/usr/bin/terraform
+
+
+Optimize the Codespace configuration
+
+Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo.
+
+The Github Resistor52/hitc-tools was updated with the following commit so that the resistor52/hitc-tools:ep16 container image would have Terraform installed.
+
+So, lets switch to that image in our .devcontainer.json configuration for our space2 repository. The contents of the .devcontainer.json file should now read:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16"
+}
+
+
+Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform.
+
+Using the CLI Tools
+
+We can confirm that all four of our CLI tools have been installed, including Terraform using:
+
+which aws az gcloud terraform
+
+
+Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do.
+
+First run the following AWS command:
+
+aws sts get-caller-identity
+
+
+Notice that we get the following error:
+
+Unable to locate credentials. You can configure credentials by running "aws configure"
+
+
+Of course we have to configure our credentials, and while we could do that via the aws configure command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository.
+
+Fortunately, the solution to this is to use “Codespaces Secrets.”
+
+Codespaces Secrets
+
+Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched.
+
+The AWS Secrets and Parameter
+
+The AWS Command Line Interface Documentation specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are:
+
+  AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY
+  AWS_DEFAULT_REGION
+
+
+The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the .devcontainer.json file.
+
+Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier.
+
+Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time.
+
+You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise.
+
+For the AWS region, we will add a line to the .devcontainer.json file that reads:
+
+ "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+
+
+So update that file so that it looks like the following when you are done:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+}
+
+
+When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it.
+
+Rerun aws sts get-caller-identity once the prompt appears. We should get a result that looks like:
+
+{
+    "UserId": "AIDAEXAMPLEKEY",
+    "Account": "123456789012",
+    "Arn": "arn:aws:iam::123456789012:user/codespaces"
+}
+
+
+Awesome. Now run env | grep AWS and you should see something like:
+
+AWS_DEFAULT_REGION=us-east-1
+AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax
+AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY
+
+
+The Azure Secrets
+
+For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run:
+
+az ad sp create-for-rbac
+
+
+And you will get output that looks like the following:
+
+In a future release, this command will NOT create a 'Contributor' role assignment by default. If needed, use the --role argument to explicitly create a role assignment.
+Creating 'Contributor' role assignment under scope '/subscriptions/911d9999-9999999999-9999a4f55a'
+The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli
+'name' property in the output is deprecated and will be removed in the future. Use 'appId' instead.
+{
+  "appId": "e564cf70-c358-40e3-adeb-83d015ebcc10",
+  "displayName": "azure-cli-2021-10-23-21-17-11",
+  "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+  "password": "DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U",
+  "tenant": "e9439999999999999999999af64c0"
+}
+
+
+Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly protect these credentials.
+
+Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS:
+
+AZURE_TENANT_ID=e9439999999999999999999af64c0                 &lt;--"tenant"
+AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U        &lt;--"password"
+AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10           &lt;--"name"
+
+
+Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the  .devcontainer.json file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that:
+
+az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+
+
+So we would need to make the .devcontainer.json file read as follows, by adding in the line with the postStartCommand:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID"
+}
+
+
+Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository.
+
+To test it, run the following command once the prompt appears:
+
+az account show
+
+
+The returned results should look like:
+
+{
+  "environmentName": "AzureCloud",
+  "homeTenantId": "e9439999999999999999999af64c0",
+  "id": "911d9999-9999999999-9999a4f55a",
+  "isDefault": true,
+  "managedByTenants": [],
+  "name": "Pay-As-You-Go",
+  "state": "Enabled",
+  "tenantId": "e9439999999999999999999af64c0",
+  "user": {
+    "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+    "type": "servicePrincipal"
+  }
+}
+
+
+NOTE: You can always delete the service principle using az delete sp delete
+
+The GCP Secrets
+
+In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access.
+
+Next, create a new JSON-formatted key. The key will download.
+
+Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it:
+
+cat *.json | base64 -w0 &gt; key_base64.txt
+
+
+Note that the “w0” switch disables wrapping of the output which is necessary for our use case.
+
+Open up the key_base64.txt file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the key_base64.txt file in as the value.
+
+Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com
+
+Make sure that the repositories selected for both are set to ‘space2’
+
+Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is:
+
+echo $GCP_KEY  | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json
+
+
+so that will make the new .devcontainer.json file look like the following:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1", "GCP_PROJECT_ID":"calm-energy-331601" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json"
+}
+
+Note that the remoteEnv name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project.
+
+Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears:
+
+gcloud auth list
+
+
+The output should look similar to:
+
+Credentialed Accounts
+ACTIVE  ACCOUNT
+*       codespaces@calm-energy-331601.iam.gserviceaccount.com
+
+To set the active account, run:
+$ gcloud config set account `ACCOUNT`
+
+
+And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected:
+
+az account show
+aws sts get-caller-identity
+
+
+
+Wrap up
+
+Well, there you go. We covered a popular trend in cloud-based development called Development Environments as Code and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a .devcontainer.json file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 16 - Introducing Github Codespaces - Dev Environments as Code">
+<meta name="twitter:description" content="16 - Introducing Github Codespaces - Dev Environments as Code
+
+
+
+Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code”
+
+In prior episodes of head in the Clouds, we have talked about the benefits of Infrastructure as Code (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day?
+
+That is the idea behind Development Environments as Code. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode.
+
+Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to Security Testing Environments as Code or Learning Environments as Code or perhaps it makes more sense to just think in terms of Environments as Code. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work.
+
+Setup
+
+To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.”
+
+Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now.
+
+The Default Codespace
+
+Great, now we can create a new repository that is owned by our new organization. Call the new repo space1 or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button.
+
+Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code:
+
+print("Hello World!")
+
+
+And then click the “Commit new file” button.
+
+Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out.
+
+Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup.
+
+Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory.
+
+The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container.
+
+At the prompt, type ls and notice that the three files from the repository are shown. We can even run the python program by typing python hello.py
+
+Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change.
+
+Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane:
+
+git status
+git add hello.py
+git commit -m "revised hello.py"
+git push
+
+
+
+We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option.
+
+Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace.
+
+To prove that we have root access, type sudo su
+
+very cool! Type exit to lower our privilege level back down.
+
+The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands:
+
+which aws az gcloud
+
+
+Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days?
+
+Is Terraform installed?
+
+which terraform
+
+
+looks like it isn’t installed either.
+
+The default image definition is maintained at https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux, so consult this repo to learn more about it.
+
+There are many more standard definitions to choose from as well. There can be seen at https://github.com/microsoft/vscode-dev-containers/tree/main/containers
+
+Customizing a Codespace with Dotfiles
+
+If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup.
+
+One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period.
+
+There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a public repository named “dotfiles” in our personal Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us.
+
+Create a Dotfile Repository
+
+In your personal github account, create a new public repository named “dotfiles.” Next, create a file named setup.sh in the new repository that contains the following lines:
+
+#!/bin/bash
+# Install Terraform
+sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+sudo apt update &amp;&amp; sudo apt install terraform
+
+
+Enable Codespaces to Use Dotfiles
+
+The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox.
+
+Test to Confirm the Dotfiles script executed.
+
+To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of  selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.”
+
+Now, click the “New Codespace” button and then click “Create codespace.”
+
+Once the prompt apears, run the following command to confirm that terraform is installed.
+
+which terraform
+
+
+And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult it.
+
+To see if our dotfiles were cloned, we can run:
+
+ls -la /workspaces/.codespaces/.persistedshare/dotfiles
+
+
+Hmm, it looks like it was cloned. Next, let’s check the creation log:
+
+less /workspaces/.codespaces/.persistedshare/creation.log
+
+
+Well, it looks like the issue is that our startup.sh script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics.
+
+We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one.
+
+Now when we run which terraform we see that it is indeed installed.
+
+Customizing Codespaces with a Custom Container
+
+The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image.
+
+The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15.
+
+To experience this, create a new repository named space2 that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.”
+
+Create a file called .devcontainer.json and add in the following content:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep15"
+}
+
+
+Then commit the change.
+
+Note: Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my hitc-tools repo and build your own custom images derived on that.
+
+Test the Custom Container in Codespaces
+
+To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces.
+
+Once the prompt appears and the Dotfiles configuration completes, run the following command:
+
+which aws az gcloud terraform
+
+
+and we should see the following output:
+
+/usr/local/bin/aws
+/usr/bin/az
+/usr/bin/gcloud
+/usr/bin/terraform
+
+
+Optimize the Codespace configuration
+
+Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo.
+
+The Github Resistor52/hitc-tools was updated with the following commit so that the resistor52/hitc-tools:ep16 container image would have Terraform installed.
+
+So, lets switch to that image in our .devcontainer.json configuration for our space2 repository. The contents of the .devcontainer.json file should now read:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16"
+}
+
+
+Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform.
+
+Using the CLI Tools
+
+We can confirm that all four of our CLI tools have been installed, including Terraform using:
+
+which aws az gcloud terraform
+
+
+Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do.
+
+First run the following AWS command:
+
+aws sts get-caller-identity
+
+
+Notice that we get the following error:
+
+Unable to locate credentials. You can configure credentials by running "aws configure"
+
+
+Of course we have to configure our credentials, and while we could do that via the aws configure command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository.
+
+Fortunately, the solution to this is to use “Codespaces Secrets.”
+
+Codespaces Secrets
+
+Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched.
+
+The AWS Secrets and Parameter
+
+The AWS Command Line Interface Documentation specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are:
+
+  AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY
+  AWS_DEFAULT_REGION
+
+
+The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the .devcontainer.json file.
+
+Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier.
+
+Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time.
+
+You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise.
+
+For the AWS region, we will add a line to the .devcontainer.json file that reads:
+
+ "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+
+
+So update that file so that it looks like the following when you are done:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+}
+
+
+When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it.
+
+Rerun aws sts get-caller-identity once the prompt appears. We should get a result that looks like:
+
+{
+    "UserId": "AIDAEXAMPLEKEY",
+    "Account": "123456789012",
+    "Arn": "arn:aws:iam::123456789012:user/codespaces"
+}
+
+
+Awesome. Now run env | grep AWS and you should see something like:
+
+AWS_DEFAULT_REGION=us-east-1
+AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax
+AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY
+
+
+The Azure Secrets
+
+For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run:
+
+az ad sp create-for-rbac
+
+
+And you will get output that looks like the following:
+
+In a future release, this command will NOT create a 'Contributor' role assignment by default. If needed, use the --role argument to explicitly create a role assignment.
+Creating 'Contributor' role assignment under scope '/subscriptions/911d9999-9999999999-9999a4f55a'
+The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli
+'name' property in the output is deprecated and will be removed in the future. Use 'appId' instead.
+{
+  "appId": "e564cf70-c358-40e3-adeb-83d015ebcc10",
+  "displayName": "azure-cli-2021-10-23-21-17-11",
+  "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+  "password": "DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U",
+  "tenant": "e9439999999999999999999af64c0"
+}
+
+
+Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly protect these credentials.
+
+Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS:
+
+AZURE_TENANT_ID=e9439999999999999999999af64c0                 &lt;--"tenant"
+AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U        &lt;--"password"
+AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10           &lt;--"name"
+
+
+Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the  .devcontainer.json file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that:
+
+az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+
+
+So we would need to make the .devcontainer.json file read as follows, by adding in the line with the postStartCommand:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID"
+}
+
+
+Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository.
+
+To test it, run the following command once the prompt appears:
+
+az account show
+
+
+The returned results should look like:
+
+{
+  "environmentName": "AzureCloud",
+  "homeTenantId": "e9439999999999999999999af64c0",
+  "id": "911d9999-9999999999-9999a4f55a",
+  "isDefault": true,
+  "managedByTenants": [],
+  "name": "Pay-As-You-Go",
+  "state": "Enabled",
+  "tenantId": "e9439999999999999999999af64c0",
+  "user": {
+    "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+    "type": "servicePrincipal"
+  }
+}
+
+
+NOTE: You can always delete the service principle using az delete sp delete
+
+The GCP Secrets
+
+In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access.
+
+Next, create a new JSON-formatted key. The key will download.
+
+Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it:
+
+cat *.json | base64 -w0 &gt; key_base64.txt
+
+
+Note that the “w0” switch disables wrapping of the output which is necessary for our use case.
+
+Open up the key_base64.txt file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the key_base64.txt file in as the value.
+
+Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com
+
+Make sure that the repositories selected for both are set to ‘space2’
+
+Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is:
+
+echo $GCP_KEY  | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json
+
+
+so that will make the new .devcontainer.json file look like the following:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1", "GCP_PROJECT_ID":"calm-energy-331601" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json"
+}
+
+Note that the remoteEnv name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project.
+
+Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears:
+
+gcloud auth list
+
+
+The output should look similar to:
+
+Credentialed Accounts
+ACTIVE  ACCOUNT
+*       codespaces@calm-energy-331601.iam.gserviceaccount.com
+
+To set the active account, run:
+$ gcloud config set account `ACCOUNT`
+
+
+And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected:
+
+az account show
+aws sts get-caller-identity
+
+
+
+Wrap up
+
+Well, there you go. We covered a popular trend in cloud-based development called Development Environments as Code and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a .devcontainer.json file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 16 - Introducing Github Codespaces - Dev Environments as Code">
+<meta property="og:description" content="16 - Introducing Github Codespaces - Dev Environments as Code
+
+
+
+Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code”
+
+In prior episodes of head in the Clouds, we have talked about the benefits of Infrastructure as Code (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day?
+
+That is the idea behind Development Environments as Code. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode.
+
+Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to Security Testing Environments as Code or Learning Environments as Code or perhaps it makes more sense to just think in terms of Environments as Code. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work.
+
+Setup
+
+To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.”
+
+Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now.
+
+The Default Codespace
+
+Great, now we can create a new repository that is owned by our new organization. Call the new repo space1 or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button.
+
+Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code:
+
+print("Hello World!")
+
+
+And then click the “Commit new file” button.
+
+Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out.
+
+Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup.
+
+Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory.
+
+The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container.
+
+At the prompt, type ls and notice that the three files from the repository are shown. We can even run the python program by typing python hello.py
+
+Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change.
+
+Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane:
+
+git status
+git add hello.py
+git commit -m "revised hello.py"
+git push
+
+
+
+We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option.
+
+Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace.
+
+To prove that we have root access, type sudo su
+
+very cool! Type exit to lower our privilege level back down.
+
+The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands:
+
+which aws az gcloud
+
+
+Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days?
+
+Is Terraform installed?
+
+which terraform
+
+
+looks like it isn’t installed either.
+
+The default image definition is maintained at https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux, so consult this repo to learn more about it.
+
+There are many more standard definitions to choose from as well. There can be seen at https://github.com/microsoft/vscode-dev-containers/tree/main/containers
+
+Customizing a Codespace with Dotfiles
+
+If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup.
+
+One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period.
+
+There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a public repository named “dotfiles” in our personal Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us.
+
+Create a Dotfile Repository
+
+In your personal github account, create a new public repository named “dotfiles.” Next, create a file named setup.sh in the new repository that contains the following lines:
+
+#!/bin/bash
+# Install Terraform
+sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+sudo apt update &amp;&amp; sudo apt install terraform
+
+
+Enable Codespaces to Use Dotfiles
+
+The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox.
+
+Test to Confirm the Dotfiles script executed.
+
+To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of  selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.”
+
+Now, click the “New Codespace” button and then click “Create codespace.”
+
+Once the prompt apears, run the following command to confirm that terraform is installed.
+
+which terraform
+
+
+And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult it.
+
+To see if our dotfiles were cloned, we can run:
+
+ls -la /workspaces/.codespaces/.persistedshare/dotfiles
+
+
+Hmm, it looks like it was cloned. Next, let’s check the creation log:
+
+less /workspaces/.codespaces/.persistedshare/creation.log
+
+
+Well, it looks like the issue is that our startup.sh script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics.
+
+We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one.
+
+Now when we run which terraform we see that it is indeed installed.
+
+Customizing Codespaces with a Custom Container
+
+The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image.
+
+The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15.
+
+To experience this, create a new repository named space2 that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.”
+
+Create a file called .devcontainer.json and add in the following content:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep15"
+}
+
+
+Then commit the change.
+
+Note: Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my hitc-tools repo and build your own custom images derived on that.
+
+Test the Custom Container in Codespaces
+
+To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces.
+
+Once the prompt appears and the Dotfiles configuration completes, run the following command:
+
+which aws az gcloud terraform
+
+
+and we should see the following output:
+
+/usr/local/bin/aws
+/usr/bin/az
+/usr/bin/gcloud
+/usr/bin/terraform
+
+
+Optimize the Codespace configuration
+
+Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo.
+
+The Github Resistor52/hitc-tools was updated with the following commit so that the resistor52/hitc-tools:ep16 container image would have Terraform installed.
+
+So, lets switch to that image in our .devcontainer.json configuration for our space2 repository. The contents of the .devcontainer.json file should now read:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16"
+}
+
+
+Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform.
+
+Using the CLI Tools
+
+We can confirm that all four of our CLI tools have been installed, including Terraform using:
+
+which aws az gcloud terraform
+
+
+Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do.
+
+First run the following AWS command:
+
+aws sts get-caller-identity
+
+
+Notice that we get the following error:
+
+Unable to locate credentials. You can configure credentials by running "aws configure"
+
+
+Of course we have to configure our credentials, and while we could do that via the aws configure command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository.
+
+Fortunately, the solution to this is to use “Codespaces Secrets.”
+
+Codespaces Secrets
+
+Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched.
+
+The AWS Secrets and Parameter
+
+The AWS Command Line Interface Documentation specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are:
+
+  AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY
+  AWS_DEFAULT_REGION
+
+
+The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the .devcontainer.json file.
+
+Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier.
+
+Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time.
+
+You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise.
+
+For the AWS region, we will add a line to the .devcontainer.json file that reads:
+
+ "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+
+
+So update that file so that it looks like the following when you are done:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+}
+
+
+When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it.
+
+Rerun aws sts get-caller-identity once the prompt appears. We should get a result that looks like:
+
+{
+    "UserId": "AIDAEXAMPLEKEY",
+    "Account": "123456789012",
+    "Arn": "arn:aws:iam::123456789012:user/codespaces"
+}
+
+
+Awesome. Now run env | grep AWS and you should see something like:
+
+AWS_DEFAULT_REGION=us-east-1
+AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax
+AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY
+
+
+The Azure Secrets
+
+For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run:
+
+az ad sp create-for-rbac
+
+
+And you will get output that looks like the following:
+
+In a future release, this command will NOT create a 'Contributor' role assignment by default. If needed, use the --role argument to explicitly create a role assignment.
+Creating 'Contributor' role assignment under scope '/subscriptions/911d9999-9999999999-9999a4f55a'
+The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli
+'name' property in the output is deprecated and will be removed in the future. Use 'appId' instead.
+{
+  "appId": "e564cf70-c358-40e3-adeb-83d015ebcc10",
+  "displayName": "azure-cli-2021-10-23-21-17-11",
+  "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+  "password": "DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U",
+  "tenant": "e9439999999999999999999af64c0"
+}
+
+
+Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly protect these credentials.
+
+Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS:
+
+AZURE_TENANT_ID=e9439999999999999999999af64c0                 &lt;--"tenant"
+AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U        &lt;--"password"
+AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10           &lt;--"name"
+
+
+Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the  .devcontainer.json file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that:
+
+az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+
+
+So we would need to make the .devcontainer.json file read as follows, by adding in the line with the postStartCommand:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID"
+}
+
+
+Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository.
+
+To test it, run the following command once the prompt appears:
+
+az account show
+
+
+The returned results should look like:
+
+{
+  "environmentName": "AzureCloud",
+  "homeTenantId": "e9439999999999999999999af64c0",
+  "id": "911d9999-9999999999-9999a4f55a",
+  "isDefault": true,
+  "managedByTenants": [],
+  "name": "Pay-As-You-Go",
+  "state": "Enabled",
+  "tenantId": "e9439999999999999999999af64c0",
+  "user": {
+    "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+    "type": "servicePrincipal"
+  }
+}
+
+
+NOTE: You can always delete the service principle using az delete sp delete
+
+The GCP Secrets
+
+In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access.
+
+Next, create a new JSON-formatted key. The key will download.
+
+Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it:
+
+cat *.json | base64 -w0 &gt; key_base64.txt
+
+
+Note that the “w0” switch disables wrapping of the output which is necessary for our use case.
+
+Open up the key_base64.txt file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the key_base64.txt file in as the value.
+
+Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com
+
+Make sure that the repositories selected for both are set to ‘space2’
+
+Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is:
+
+echo $GCP_KEY  | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json
+
+
+so that will make the new .devcontainer.json file look like the following:
+
+{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1", "GCP_PROJECT_ID":"calm-energy-331601" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json"
+}
+
+Note that the remoteEnv name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project.
+
+Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears:
+
+gcloud auth list
+
+
+The output should look similar to:
+
+Credentialed Accounts
+ACTIVE  ACCOUNT
+*       codespaces@calm-energy-331601.iam.gserviceaccount.com
+
+To set the active account, run:
+$ gcloud config set account `ACCOUNT`
+
+
+And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected:
+
+az account show
+aws sts get-caller-identity
+
+
+
+Wrap up
+
+Well, there you go. We covered a popular trend in cloud-based development called Development Environments as Code and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a .devcontainer.json file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta property="og:url" content="/episodes/episode16/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode16/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 16 - Introducing Github Codespaces - Dev Environments as Code | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 16 - Introducing Github Codespaces - Dev Environments as Code" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="16 - Introducing Github Codespaces - Dev Environments as Code Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code” In prior episodes of head in the Clouds, we have talked about the benefits of Infrastructure as Code (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day? That is the idea behind Development Environments as Code. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode. Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to Security Testing Environments as Code or Learning Environments as Code or perhaps it makes more sense to just think in terms of Environments as Code. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work. Setup To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.” Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now. The Default Codespace Great, now we can create a new repository that is owned by our new organization. Call the new repo space1 or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button. Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code: print(&quot;Hello World!&quot;) And then click the “Commit new file” button. Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out. Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup. Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory. The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container. At the prompt, type ls and notice that the three files from the repository are shown. We can even run the python program by typing python hello.py Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change. Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane: git status git add hello.py git commit -m &quot;revised hello.py&quot; git push We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option. Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace. To prove that we have root access, type sudo su very cool! Type exit to lower our privilege level back down. The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands: which aws az gcloud Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days? Is Terraform installed? which terraform looks like it isn’t installed either. The default image definition is maintained at https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux, so consult this repo to learn more about it. There are many more standard definitions to choose from as well. There can be seen at https://github.com/microsoft/vscode-dev-containers/tree/main/containers Customizing a Codespace with Dotfiles If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup. One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period. There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a public repository named “dotfiles” in our personal Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us. Create a Dotfile Repository In your personal github account, create a new public repository named “dotfiles.” Next, create a file named setup.sh in the new repository that contains the following lines: #!/bin/bash # Install Terraform sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add - sudo apt-add-repository &quot;deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main&quot; sudo apt update &amp;&amp; sudo apt install terraform Enable Codespaces to Use Dotfiles The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox. Test to Confirm the Dotfiles script executed. To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.” Now, click the “New Codespace” button and then click “Create codespace.” Once the prompt apears, run the following command to confirm that terraform is installed. which terraform And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult it. To see if our dotfiles were cloned, we can run: ls -la /workspaces/.codespaces/.persistedshare/dotfiles Hmm, it looks like it was cloned. Next, let’s check the creation log: less /workspaces/.codespaces/.persistedshare/creation.log Well, it looks like the issue is that our startup.sh script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics. We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one. Now when we run which terraform we see that it is indeed installed. Customizing Codespaces with a Custom Container The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image. The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15. To experience this, create a new repository named space2 that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.” Create a file called .devcontainer.json and add in the following content: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep15&quot; } Then commit the change. Note: Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my hitc-tools repo and build your own custom images derived on that. Test the Custom Container in Codespaces To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces. Once the prompt appears and the Dotfiles configuration completes, run the following command: which aws az gcloud terraform and we should see the following output: /usr/local/bin/aws /usr/bin/az /usr/bin/gcloud /usr/bin/terraform Optimize the Codespace configuration Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo. The Github Resistor52/hitc-tools was updated with the following commit so that the resistor52/hitc-tools:ep16 container image would have Terraform installed. So, lets switch to that image in our .devcontainer.json configuration for our space2 repository. The contents of the .devcontainer.json file should now read: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot; } Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform. Using the CLI Tools We can confirm that all four of our CLI tools have been installed, including Terraform using: which aws az gcloud terraform Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do. First run the following AWS command: aws sts get-caller-identity Notice that we get the following error: Unable to locate credentials. You can configure credentials by running &quot;aws configure&quot; Of course we have to configure our credentials, and while we could do that via the aws configure command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository. Fortunately, the solution to this is to use “Codespaces Secrets.” Codespaces Secrets Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched. The AWS Secrets and Parameter The AWS Command Line Interface Documentation specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are: AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the .devcontainer.json file. Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier. Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time. You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise. For the AWS region, we will add a line to the .devcontainer.json file that reads: &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; } So update that file so that it looks like the following when you are done: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; } } When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it. Rerun aws sts get-caller-identity once the prompt appears. We should get a result that looks like: { &quot;UserId&quot;: &quot;AIDAEXAMPLEKEY&quot;, &quot;Account&quot;: &quot;123456789012&quot;, &quot;Arn&quot;: &quot;arn:aws:iam::123456789012:user/codespaces&quot; } Awesome. Now run env | grep AWS and you should see something like: AWS_DEFAULT_REGION=us-east-1 AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY The Azure Secrets For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run: az ad sp create-for-rbac And you will get output that looks like the following: In a future release, this command will NOT create a &#39;Contributor&#39; role assignment by default. If needed, use the --role argument to explicitly create a role assignment. Creating &#39;Contributor&#39; role assignment under scope &#39;/subscriptions/911d9999-9999999999-9999a4f55a&#39; The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli &#39;name&#39; property in the output is deprecated and will be removed in the future. Use &#39;appId&#39; instead. { &quot;appId&quot;: &quot;e564cf70-c358-40e3-adeb-83d015ebcc10&quot;, &quot;displayName&quot;: &quot;azure-cli-2021-10-23-21-17-11&quot;, &quot;name&quot;: &quot;e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10&quot;, &quot;password&quot;: &quot;DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U&quot;, &quot;tenant&quot;: &quot;e9439999999999999999999af64c0&quot; } Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly protect these credentials. Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS: AZURE_TENANT_ID=e9439999999999999999999af64c0 &lt;--&quot;tenant&quot; AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U &lt;--&quot;password&quot; AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10 &lt;--&quot;name&quot; Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the .devcontainer.json file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that: az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID So we would need to make the .devcontainer.json file read as follows, by adding in the line with the postStartCommand: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; }, &quot;postStartCommand&quot;: &quot;az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID&quot; } Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. To test it, run the following command once the prompt appears: az account show The returned results should look like: { &quot;environmentName&quot;: &quot;AzureCloud&quot;, &quot;homeTenantId&quot;: &quot;e9439999999999999999999af64c0&quot;, &quot;id&quot;: &quot;911d9999-9999999999-9999a4f55a&quot;, &quot;isDefault&quot;: true, &quot;managedByTenants&quot;: [], &quot;name&quot;: &quot;Pay-As-You-Go&quot;, &quot;state&quot;: &quot;Enabled&quot;, &quot;tenantId&quot;: &quot;e9439999999999999999999af64c0&quot;, &quot;user&quot;: { &quot;name&quot;: &quot;e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10&quot;, &quot;type&quot;: &quot;servicePrincipal&quot; } } NOTE: You can always delete the service principle using az delete sp delete The GCP Secrets In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access. Next, create a new JSON-formatted key. The key will download. Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it: cat *.json | base64 -w0 &gt; key_base64.txt Note that the “w0” switch disables wrapping of the output which is necessary for our use case. Open up the key_base64.txt file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the key_base64.txt file in as the value. Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com Make sure that the repositories selected for both are set to ‘space2’ Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is: echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json so that will make the new .devcontainer.json file look like the following: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot;, &quot;GCP_PROJECT_ID&quot;:&quot;calm-energy-331601&quot; }, &quot;postStartCommand&quot;: &quot;az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json&quot; } Note that the remoteEnv name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project. Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears: gcloud auth list The output should look similar to: Credentialed Accounts ACTIVE ACCOUNT * codespaces@calm-energy-331601.iam.gserviceaccount.com To set the active account, run: $ gcloud config set account `ACCOUNT` And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected: az account show aws sts get-caller-identity Wrap up Well, there you go. We covered a popular trend in cloud-based development called Development Environments as Code and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a .devcontainer.json file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<meta property="og:description" content="16 - Introducing Github Codespaces - Dev Environments as Code Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code” In prior episodes of head in the Clouds, we have talked about the benefits of Infrastructure as Code (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day? That is the idea behind Development Environments as Code. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode. Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to Security Testing Environments as Code or Learning Environments as Code or perhaps it makes more sense to just think in terms of Environments as Code. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work. Setup To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.” Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now. The Default Codespace Great, now we can create a new repository that is owned by our new organization. Call the new repo space1 or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button. Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code: print(&quot;Hello World!&quot;) And then click the “Commit new file” button. Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out. Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup. Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory. The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container. At the prompt, type ls and notice that the three files from the repository are shown. We can even run the python program by typing python hello.py Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change. Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane: git status git add hello.py git commit -m &quot;revised hello.py&quot; git push We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option. Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace. To prove that we have root access, type sudo su very cool! Type exit to lower our privilege level back down. The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands: which aws az gcloud Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days? Is Terraform installed? which terraform looks like it isn’t installed either. The default image definition is maintained at https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux, so consult this repo to learn more about it. There are many more standard definitions to choose from as well. There can be seen at https://github.com/microsoft/vscode-dev-containers/tree/main/containers Customizing a Codespace with Dotfiles If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup. One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period. There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a public repository named “dotfiles” in our personal Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us. Create a Dotfile Repository In your personal github account, create a new public repository named “dotfiles.” Next, create a file named setup.sh in the new repository that contains the following lines: #!/bin/bash # Install Terraform sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add - sudo apt-add-repository &quot;deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main&quot; sudo apt update &amp;&amp; sudo apt install terraform Enable Codespaces to Use Dotfiles The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox. Test to Confirm the Dotfiles script executed. To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.” Now, click the “New Codespace” button and then click “Create codespace.” Once the prompt apears, run the following command to confirm that terraform is installed. which terraform And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult it. To see if our dotfiles were cloned, we can run: ls -la /workspaces/.codespaces/.persistedshare/dotfiles Hmm, it looks like it was cloned. Next, let’s check the creation log: less /workspaces/.codespaces/.persistedshare/creation.log Well, it looks like the issue is that our startup.sh script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics. We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one. Now when we run which terraform we see that it is indeed installed. Customizing Codespaces with a Custom Container The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image. The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15. To experience this, create a new repository named space2 that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.” Create a file called .devcontainer.json and add in the following content: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep15&quot; } Then commit the change. Note: Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my hitc-tools repo and build your own custom images derived on that. Test the Custom Container in Codespaces To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces. Once the prompt appears and the Dotfiles configuration completes, run the following command: which aws az gcloud terraform and we should see the following output: /usr/local/bin/aws /usr/bin/az /usr/bin/gcloud /usr/bin/terraform Optimize the Codespace configuration Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo. The Github Resistor52/hitc-tools was updated with the following commit so that the resistor52/hitc-tools:ep16 container image would have Terraform installed. So, lets switch to that image in our .devcontainer.json configuration for our space2 repository. The contents of the .devcontainer.json file should now read: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot; } Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform. Using the CLI Tools We can confirm that all four of our CLI tools have been installed, including Terraform using: which aws az gcloud terraform Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do. First run the following AWS command: aws sts get-caller-identity Notice that we get the following error: Unable to locate credentials. You can configure credentials by running &quot;aws configure&quot; Of course we have to configure our credentials, and while we could do that via the aws configure command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository. Fortunately, the solution to this is to use “Codespaces Secrets.” Codespaces Secrets Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched. The AWS Secrets and Parameter The AWS Command Line Interface Documentation specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are: AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the .devcontainer.json file. Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier. Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time. You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise. For the AWS region, we will add a line to the .devcontainer.json file that reads: &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; } So update that file so that it looks like the following when you are done: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; } } When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it. Rerun aws sts get-caller-identity once the prompt appears. We should get a result that looks like: { &quot;UserId&quot;: &quot;AIDAEXAMPLEKEY&quot;, &quot;Account&quot;: &quot;123456789012&quot;, &quot;Arn&quot;: &quot;arn:aws:iam::123456789012:user/codespaces&quot; } Awesome. Now run env | grep AWS and you should see something like: AWS_DEFAULT_REGION=us-east-1 AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY The Azure Secrets For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run: az ad sp create-for-rbac And you will get output that looks like the following: In a future release, this command will NOT create a &#39;Contributor&#39; role assignment by default. If needed, use the --role argument to explicitly create a role assignment. Creating &#39;Contributor&#39; role assignment under scope &#39;/subscriptions/911d9999-9999999999-9999a4f55a&#39; The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli &#39;name&#39; property in the output is deprecated and will be removed in the future. Use &#39;appId&#39; instead. { &quot;appId&quot;: &quot;e564cf70-c358-40e3-adeb-83d015ebcc10&quot;, &quot;displayName&quot;: &quot;azure-cli-2021-10-23-21-17-11&quot;, &quot;name&quot;: &quot;e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10&quot;, &quot;password&quot;: &quot;DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U&quot;, &quot;tenant&quot;: &quot;e9439999999999999999999af64c0&quot; } Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly protect these credentials. Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS: AZURE_TENANT_ID=e9439999999999999999999af64c0 &lt;--&quot;tenant&quot; AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U &lt;--&quot;password&quot; AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10 &lt;--&quot;name&quot; Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the .devcontainer.json file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that: az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID So we would need to make the .devcontainer.json file read as follows, by adding in the line with the postStartCommand: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; }, &quot;postStartCommand&quot;: &quot;az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID&quot; } Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. To test it, run the following command once the prompt appears: az account show The returned results should look like: { &quot;environmentName&quot;: &quot;AzureCloud&quot;, &quot;homeTenantId&quot;: &quot;e9439999999999999999999af64c0&quot;, &quot;id&quot;: &quot;911d9999-9999999999-9999a4f55a&quot;, &quot;isDefault&quot;: true, &quot;managedByTenants&quot;: [], &quot;name&quot;: &quot;Pay-As-You-Go&quot;, &quot;state&quot;: &quot;Enabled&quot;, &quot;tenantId&quot;: &quot;e9439999999999999999999af64c0&quot;, &quot;user&quot;: { &quot;name&quot;: &quot;e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10&quot;, &quot;type&quot;: &quot;servicePrincipal&quot; } } NOTE: You can always delete the service principle using az delete sp delete The GCP Secrets In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access. Next, create a new JSON-formatted key. The key will download. Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it: cat *.json | base64 -w0 &gt; key_base64.txt Note that the “w0” switch disables wrapping of the output which is necessary for our use case. Open up the key_base64.txt file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the key_base64.txt file in as the value. Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com Make sure that the repositories selected for both are set to ‘space2’ Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is: echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json so that will make the new .devcontainer.json file look like the following: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot;, &quot;GCP_PROJECT_ID&quot;:&quot;calm-energy-331601&quot; }, &quot;postStartCommand&quot;: &quot;az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json&quot; } Note that the remoteEnv name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project. Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears: gcloud auth list The output should look similar to: Credentialed Accounts ACTIVE ACCOUNT * codespaces@calm-energy-331601.iam.gserviceaccount.com To set the active account, run: $ gcloud config set account `ACCOUNT` And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected: az account show aws sts get-caller-identity Wrap up Well, there you go. We covered a popular trend in cloud-based development called Development Environments as Code and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a .devcontainer.json file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode16/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode16/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 16 - Introducing Github Codespaces - Dev Environments as Code" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:40-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"16 - Introducing Github Codespaces - Dev Environments as Code Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code” In prior episodes of head in the Clouds, we have talked about the benefits of Infrastructure as Code (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day? That is the idea behind Development Environments as Code. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode. Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to Security Testing Environments as Code or Learning Environments as Code or perhaps it makes more sense to just think in terms of Environments as Code. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work. Setup To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.” Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now. The Default Codespace Great, now we can create a new repository that is owned by our new organization. Call the new repo space1 or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button. Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code: print(&quot;Hello World!&quot;) And then click the “Commit new file” button. Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out. Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup. Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory. The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container. At the prompt, type ls and notice that the three files from the repository are shown. We can even run the python program by typing python hello.py Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change. Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane: git status git add hello.py git commit -m &quot;revised hello.py&quot; git push We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option. Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace. To prove that we have root access, type sudo su very cool! Type exit to lower our privilege level back down. The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands: which aws az gcloud Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days? Is Terraform installed? which terraform looks like it isn’t installed either. The default image definition is maintained at https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux, so consult this repo to learn more about it. There are many more standard definitions to choose from as well. There can be seen at https://github.com/microsoft/vscode-dev-containers/tree/main/containers Customizing a Codespace with Dotfiles If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup. One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period. There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a public repository named “dotfiles” in our personal Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us. Create a Dotfile Repository In your personal github account, create a new public repository named “dotfiles.” Next, create a file named setup.sh in the new repository that contains the following lines: #!/bin/bash # Install Terraform sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add - sudo apt-add-repository &quot;deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main&quot; sudo apt update &amp;&amp; sudo apt install terraform Enable Codespaces to Use Dotfiles The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox. Test to Confirm the Dotfiles script executed. To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.” Now, click the “New Codespace” button and then click “Create codespace.” Once the prompt apears, run the following command to confirm that terraform is installed. which terraform And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult it. To see if our dotfiles were cloned, we can run: ls -la /workspaces/.codespaces/.persistedshare/dotfiles Hmm, it looks like it was cloned. Next, let’s check the creation log: less /workspaces/.codespaces/.persistedshare/creation.log Well, it looks like the issue is that our startup.sh script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics. We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one. Now when we run which terraform we see that it is indeed installed. Customizing Codespaces with a Custom Container The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image. The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15. To experience this, create a new repository named space2 that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.” Create a file called .devcontainer.json and add in the following content: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep15&quot; } Then commit the change. Note: Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my hitc-tools repo and build your own custom images derived on that. Test the Custom Container in Codespaces To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces. Once the prompt appears and the Dotfiles configuration completes, run the following command: which aws az gcloud terraform and we should see the following output: /usr/local/bin/aws /usr/bin/az /usr/bin/gcloud /usr/bin/terraform Optimize the Codespace configuration Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo. The Github Resistor52/hitc-tools was updated with the following commit so that the resistor52/hitc-tools:ep16 container image would have Terraform installed. So, lets switch to that image in our .devcontainer.json configuration for our space2 repository. The contents of the .devcontainer.json file should now read: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot; } Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform. Using the CLI Tools We can confirm that all four of our CLI tools have been installed, including Terraform using: which aws az gcloud terraform Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do. First run the following AWS command: aws sts get-caller-identity Notice that we get the following error: Unable to locate credentials. You can configure credentials by running &quot;aws configure&quot; Of course we have to configure our credentials, and while we could do that via the aws configure command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository. Fortunately, the solution to this is to use “Codespaces Secrets.” Codespaces Secrets Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched. The AWS Secrets and Parameter The AWS Command Line Interface Documentation specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are: AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the .devcontainer.json file. Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier. Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time. You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise. For the AWS region, we will add a line to the .devcontainer.json file that reads: &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; } So update that file so that it looks like the following when you are done: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; } } When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it. Rerun aws sts get-caller-identity once the prompt appears. We should get a result that looks like: { &quot;UserId&quot;: &quot;AIDAEXAMPLEKEY&quot;, &quot;Account&quot;: &quot;123456789012&quot;, &quot;Arn&quot;: &quot;arn:aws:iam::123456789012:user/codespaces&quot; } Awesome. Now run env | grep AWS and you should see something like: AWS_DEFAULT_REGION=us-east-1 AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY The Azure Secrets For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run: az ad sp create-for-rbac And you will get output that looks like the following: In a future release, this command will NOT create a &#39;Contributor&#39; role assignment by default. If needed, use the --role argument to explicitly create a role assignment. Creating &#39;Contributor&#39; role assignment under scope &#39;/subscriptions/911d9999-9999999999-9999a4f55a&#39; The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli &#39;name&#39; property in the output is deprecated and will be removed in the future. Use &#39;appId&#39; instead. { &quot;appId&quot;: &quot;e564cf70-c358-40e3-adeb-83d015ebcc10&quot;, &quot;displayName&quot;: &quot;azure-cli-2021-10-23-21-17-11&quot;, &quot;name&quot;: &quot;e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10&quot;, &quot;password&quot;: &quot;DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U&quot;, &quot;tenant&quot;: &quot;e9439999999999999999999af64c0&quot; } Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly protect these credentials. Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS: AZURE_TENANT_ID=e9439999999999999999999af64c0 &lt;--&quot;tenant&quot; AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U &lt;--&quot;password&quot; AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10 &lt;--&quot;name&quot; Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the .devcontainer.json file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that: az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID So we would need to make the .devcontainer.json file read as follows, by adding in the line with the postStartCommand: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot; }, &quot;postStartCommand&quot;: &quot;az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID&quot; } Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. To test it, run the following command once the prompt appears: az account show The returned results should look like: { &quot;environmentName&quot;: &quot;AzureCloud&quot;, &quot;homeTenantId&quot;: &quot;e9439999999999999999999af64c0&quot;, &quot;id&quot;: &quot;911d9999-9999999999-9999a4f55a&quot;, &quot;isDefault&quot;: true, &quot;managedByTenants&quot;: [], &quot;name&quot;: &quot;Pay-As-You-Go&quot;, &quot;state&quot;: &quot;Enabled&quot;, &quot;tenantId&quot;: &quot;e9439999999999999999999af64c0&quot;, &quot;user&quot;: { &quot;name&quot;: &quot;e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10&quot;, &quot;type&quot;: &quot;servicePrincipal&quot; } } NOTE: You can always delete the service principle using az delete sp delete The GCP Secrets In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access. Next, create a new JSON-formatted key. The key will download. Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it: cat *.json | base64 -w0 &gt; key_base64.txt Note that the “w0” switch disables wrapping of the output which is necessary for our use case. Open up the key_base64.txt file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the key_base64.txt file in as the value. Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com Make sure that the repositories selected for both are set to ‘space2’ Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is: echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json so that will make the new .devcontainer.json file look like the following: { &quot;name&quot;: &quot;HitC Tools&quot;, &quot;image&quot;: &quot;resistor52/hitc-tools:ep16&quot;, &quot;remoteEnv&quot;: { &quot;AWS_DEFAULT_REGION&quot;:&quot;us-east-1&quot;, &quot;GCP_PROJECT_ID&quot;:&quot;calm-energy-331601&quot; }, &quot;postStartCommand&quot;: &quot;az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json&quot; } Note that the remoteEnv name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project. Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears: gcloud auth list The output should look similar to: Credentialed Accounts ACTIVE ACCOUNT * codespaces@calm-energy-331601.iam.gserviceaccount.com To set the active account, run: $ gcloud config set account `ACCOUNT` And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected: az account show aws sts get-caller-identity Wrap up Well, there you go. We covered a popular trend in cloud-based development called Development Environments as Code and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a .devcontainer.json file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care.","headline":"Episode 16 - Introducing Github Codespaces - Dev Environments as Code","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode16/"},"url":"http://localhost:4000/episodes/episode16/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 16 - Introducing Github Codespaces - Dev Environments as Code</h1>
+    <div class="article-wrap">
+      <p>16 - Introducing Github Codespaces - Dev Environments as Code</p>
+
+<div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/maVJsDAtyzc" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to Episode 16 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “Introducing Github Codespaces - Dev Environments as Code”</p>
+
+<p>In prior episodes of head in the Clouds, we have talked about the benefits of <em>Infrastructure as Code</em> (IaC) and how we can easily provision cloud resources with a script. However, to deploy the Infrastructure as Code, one must have the necessary dependencies in place such as the credentials and the IaC tool, (such as Terraform) installed. Different development projects require different dependencies so wouldn’t it be awesome if we could quickly and easily provision a development environment for each moments before we needed it and tear it down when we are done working for the day?</p>
+
+<p>That is the idea behind <em>Development Environments as Code</em>. Dev Environments as Code can be thought of as a special type of Infrastructure as Code. Github Codespaces is one of many service providers that offer Dev Environments as Code, and this service is the topic of today’s episode.</p>
+
+<p>Before we jump into the particulars of Github Codespaces, let’s answer the question that you may be asking yourself, “I am a security person, not a developer–why do I care about this?” Well, we can expand the idea of Dev Environments as Code to <em>Security Testing Environments as Code</em> or <em>Learning Environments as Code</em> or perhaps it makes more sense to just think in terms of <em>Environments as Code</em>. Regardless of your role, I think that the idea of being able to jump right into work is much more appealing than having to invest a lot of setup time before getting into the important work.</p>
+
+<h1 id="setup">Setup</h1>
+
+<p>To use Github Codespaces, you have to have your Github account associated with a Team plan or Enterprise plan that has authorized your Github account to use the Codespaces functionality. The easiest way to set this up if you do not currently have access to Codespaces yet is to subscribe to the Team plan for $4 per user per month, even if it is just for a single month. And yes, you can have a team consisting of a single user. That’s what I did, except for I chose the annual billing plan to simplify my book keeping. Go ahead and set up the organization that you plan to associate with your new team account. For example, I called my new organization “Rampant Lab.”</p>
+
+<p>Ok, now that you are subscribed and set up your team account and organization, you need to grant your account the permission to use Codespaces. At the Organization level, click on “Setting” and then select “Codespaces” in the left-hand menu. Set the User Permissions to allow at least your Github user account to access Codespaces. Also, set the “Access and security” radio button to “All repositories” for now.</p>
+
+<h1 id="the-default-codespace">The Default Codespace</h1>
+
+<p>Great, now we can create a new repository that is owned by our new organization. Call the new repo <code class="language-plaintext highlighter-rouge">space1</code> or something like that. if you want, provide an optional description and leave the repository private. Add a README and a License like “Apache License 2.0” while you are at it. Then click the “Create repository” button.</p>
+
+<p>Now, click the “Add file” button and select “create new file.” Call the new file “hello.py” and add the following line of code:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>print("Hello World!")
+</code></pre></div></div>
+
+<p>And then click the “Commit new file” button.</p>
+
+<p>Don’t worry if you do not have Python installed, the default Codespace does! Let’s check it out.</p>
+
+<p>Click the Green “Code” button and then select the “Codespaces” tab. Note: if you do not see the “Local” and “Codespaces” tab, you are either not in your Organization or did not grant your account access to Codespaces as described in the setup.</p>
+
+<p>Next, click the “New Codespace” button. Choose the “2 core” option and click the “Create codespace” button. Within two or three minutes, the Codespaces service will spin up a container to serve as your environment and the Web browser will load the Microsoft Visual Studio web-based Integrated Development Environment with our repository set as the working directory.</p>
+
+<p>The container that gets spun up is on a dedicated Linux virtual machine so that you can have full access to all of the resources of the virtual machine including full root access to your container.</p>
+
+<p>At the prompt, type <code class="language-plaintext highlighter-rouge">ls</code> and notice that the three files from the repository are shown. We can even run the python program by typing <code class="language-plaintext highlighter-rouge">python hello.py</code></p>
+
+<p>Click on the “hello.py” file in the EXPLORER pane and then edit ‘hello.py’ by replacing “Hello World!” with “Head in the Clouds.” Rerun it to observe the change.</p>
+
+<p>Since our change works, let’s commit the change. Run the following commands in the TERMINAL pane:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git status
+git add hello.py
+git commit -m "revised hello.py"
+git push
+
+</code></pre></div></div>
+
+<p>We have just pushed the change from our local development environment (which is running in a cloud container) up to our repository in Github. We can look at it in the repository by clicking the blue “Codespace” button in the bottom left-hand corner and selecting the “Go to repository” option.</p>
+
+<p>Notice that the commit comments that read “revised hello.py” show that our last commit was indeed pushed. To get back to our Codespace, click the green “Code” button again and then select the running codespace.</p>
+
+<p>To prove that we have root access, type <code class="language-plaintext highlighter-rouge">sudo su</code></p>
+
+<p>very cool! Type <code class="language-plaintext highlighter-rouge">exit</code> to lower our privilege level back down.</p>
+
+<p>The default Codespaces container image supports many different languages not only Python, but Java, Go, C++ and a few others. You may have noticed that it does not support all of our cloud command line interfaces. To prove it, run the following commands:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>which aws az gcloud
+</code></pre></div></div>
+
+<p>Interesting! The only one that the default image supports is the Azure CLI. Hmm, I wonder who owns Github these days?</p>
+
+<p>Is Terraform installed?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>which terraform
+</code></pre></div></div>
+
+<p>looks like it isn’t installed either.</p>
+
+<p>The default image definition is maintained at <a href="https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux">https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux</a>, so consult this repo to learn more about it.</p>
+
+<p>There are many more standard definitions to choose from as well. There can be seen at <a href="https://github.com/microsoft/vscode-dev-containers/tree/main/containers">https://github.com/microsoft/vscode-dev-containers/tree/main/containers</a></p>
+
+<h1 id="customizing-a-codespace-with-dotfiles">Customizing a Codespace with Dotfiles</h1>
+
+<p>If we wanted to install the AWS and GCloud command line interfaces on our Codespace environment that we just launched, we could since we have full control, but then we would have to run through the manual install process each time we spun up a Codespace. That would be rather inefficient, besides, we want to be able to hit the ground running, without any additional setup.</p>
+
+<p>One option to customize our Codespace environment is to use dotfiles. Dotfiles take their name from the fact that many of the files used to configure a Linux or Mac are hidden by virtue of the fact that the first character in their name is a period.</p>
+
+<p>There are a couple of steps to setting up Codespaces to work with dotfiles. First we need to create a <strong>public</strong> repository named “dotfiles” in our <strong>personal</strong> Github account. And then second, we need to enable Codespaces to use this to configure our Codespaces for us.</p>
+
+<h2 id="create-a-dotfile-repository">Create a Dotfile Repository</h2>
+
+<p>In your <strong>personal</strong> github account, create a new public repository named “dotfiles.” Next, create a file named <code class="language-plaintext highlighter-rouge">setup.sh</code> in the new repository that contains the following lines:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#!/bin/bash
+# Install Terraform
+sudo apt update &amp;&amp; sudo apt install -y gnupg software-properties-common curl
+curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+sudo apt update &amp;&amp; sudo apt install terraform
+</code></pre></div></div>
+
+<h2 id="enable-codespaces-to-use-dotfiles">Enable Codespaces to Use Dotfiles</h2>
+
+<p>The next step is to enable code spaces to use our dotfiles. Click on your profile photo in the upper right-hand of the Github web page and select “Settings.” In the new page that loads, select “Codespaces” in the right-hand menu. Now, click the “Automatically install dotfiles” checkbox.</p>
+
+<h2 id="test-to-confirm-the-dotfiles-script-executed">Test to Confirm the Dotfiles script executed.</h2>
+
+<p>To test that the Dotfiles script will execute, let’s create a new code space for our “space1” repository. Navigate back to your organization and select the “space1” repository. This time, instead of  selecting the running code space, click the “Manage all” link. Click the elipsis (the three dots) on the row that lists the running codespace, and then click “Delete.”</p>
+
+<p>Now, click the “New Codespace” button and then click “Create codespace.”</p>
+
+<p>Once the prompt apears, run the following command to confirm that terraform is installed.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>which terraform
+</code></pre></div></div>
+
+<p>And…bad news…it is not installed. Github has a good troubleshooting document, so let’s consult <a href="https://docs.github.com/en/codespaces/troubleshooting/troubleshooting-dotfiles-for-codespaces">it</a>.</p>
+
+<p>To see if our dotfiles were cloned, we can run:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ls -la /workspaces/.codespaces/.persistedshare/dotfiles
+</code></pre></div></div>
+
+<p>Hmm, it looks like it was cloned. Next, let’s check the creation log:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>less /workspaces/.codespaces/.persistedshare/creation.log
+</code></pre></div></div>
+
+<p>Well, it looks like the issue is that our <code class="language-plaintext highlighter-rouge">startup.sh</code> script is not executable. Unfortunately, this script cannot be made executable via the web UI. So I will clone it down to my local system, use chmod to make the file executable and push it back to the repo. For this episode, I will not be demonstrating how to do that, since this episode is not on Github basics.</p>
+
+<p>We do, however want to test it now that we made this fix. Click the blue Codespaces button in the lower left corner and click “My Codespaces.” Delete the active codespace and create a new one.</p>
+
+<p>Now when we run <code class="language-plaintext highlighter-rouge">which terraform</code> we see that it is indeed installed.</p>
+
+<h1 id="customizing-codespaces-with-a-custom-container">Customizing Codespaces with a Custom Container</h1>
+
+<p>The installation of Terraform after the container spins up using the dotfiles technique is not terribly slow, but if we were to install the cloud CLI’s it would add a considerable amount of time–and that is exactly what we are trying to avoid. So this brings us to the other option: using a custom image.</p>
+
+<p>The benefit of using a custom image is that we can install all the software that we need for our development environment and leave anything that we do not need out of it. Fortunately, we already have a container image that has the command line tools for all three cloud service providers as that was the subject of Episode 15.</p>
+
+<p>To experience this, create a new repository named <code class="language-plaintext highlighter-rouge">space2</code> that is owned by the organization that granted you Codespace access. Leaving it as a private repo is fine and Add a README file. Click “Create repository.”</p>
+
+<p>Create a file called <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> and add in the following content:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep15"
+}
+</code></pre></div></div>
+
+<p>Then commit the change.</p>
+
+<p><strong>Note:</strong> Even if you followed along with Episode 15 and made a public image in Docker Hub, you may still want to use my image as I have made some changes to the image since publishing that Episode. After completing the lesson in this Episode, you can fork my <a href="https://github.com/Resistor52/hitc-tools">hitc-tools repo</a> and build your own custom images derived on that.</p>
+
+<h2 id="test-the-custom-container-in-codespaces">Test the Custom Container in Codespaces</h2>
+
+<p>To test if Codespaces will use the specified container, spin up a Codespace in this repository after deleting any unneeded running codespaces.</p>
+
+<p>Once the prompt appears and the Dotfiles configuration completes, run the following command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>which aws az gcloud terraform
+</code></pre></div></div>
+
+<p>and we should see the following output:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/usr/local/bin/aws
+/usr/bin/az
+/usr/bin/gcloud
+/usr/bin/terraform
+</code></pre></div></div>
+
+<h2 id="optimize-the-codespace-configuration">Optimize the Codespace configuration</h2>
+
+<p>Great, This worked, but it would be even more efficient if we installed Terraform in the container image and turned off the dotfiles. Generally, it makes sense to build a container that has everything that the entire team needs and to allow each user to make minor customizations via dotfiles in their personal repo.</p>
+
+<p>The Github <a href="https://github.com/Resistor52/hitc-tools">Resistor52/hitc-tools</a> was updated with the following <a href="https://github.com/Resistor52/hitc-tools/commit/0facb0f2b211aff0577868a70ebf0567dc063915">commit</a> so that the <code class="language-plaintext highlighter-rouge">resistor52/hitc-tools:ep16</code> container image would have Terraform installed.</p>
+
+<p>So, lets switch to that image in our <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> configuration for our <code class="language-plaintext highlighter-rouge">space2</code> repository. The contents of the <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file should now read:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16"
+}
+</code></pre></div></div>
+
+<p>Turn off the “Automatically install dotfiles” setting in your personal settings and then launch Codespaces again. Notice that the prompt appears in short order and there is not the additional delay of the dotfiles process needing to install terraform.</p>
+
+<h1 id="using-the-cli-tools">Using the CLI Tools</h1>
+
+<p>We can confirm that all four of our CLI tools have been installed, including Terraform using:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>which aws az gcloud terraform
+</code></pre></div></div>
+
+<p>Now that we have a basic Codespace configuration, there is still some additional configuration that we will need to do.</p>
+
+<p>First run the following AWS command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws sts get-caller-identity
+</code></pre></div></div>
+
+<p>Notice that we get the following error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Unable to locate credentials. You can configure credentials by running "aws configure"
+</code></pre></div></div>
+
+<p>Of course we have to configure our credentials, and while we could do that via the <code class="language-plaintext highlighter-rouge">aws configure</code> command in the terminal, then we would have to do it every time we needed to spin up a new codespace for this repository.</p>
+
+<p>Fortunately, the solution to this is to use “Codespaces Secrets.”</p>
+
+<h1 id="codespaces-secrets">Codespaces Secrets</h1>
+
+<p>Codespaces has a facility to store the secrets that each user needs to work with external services from within their Codespaces. The Secrets are stored by the Codespaces service in an encrypted format and are only exposed to the codespaces that you designate by setting the secret as an environment variable as the container is launched.</p>
+
+<h2 id="the-aws-secrets-and-parameter">The AWS Secrets and Parameter</h2>
+
+<p>The <a href="https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html">AWS Command Line Interface Documentation</a> specifies various environment variables that can be used to set configurations needed by the CLI. The three that we are interested in are:</p>
+<ul>
+  <li>AWS_ACCESS_KEY_ID</li>
+  <li>AWS_SECRET_ACCESS_KEY</li>
+  <li>AWS_DEFAULT_REGION</li>
+</ul>
+
+<p>The first two are sensitive so we will set them as Secrets and the third one is not sensitive so we will set it via the <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file.</p>
+
+<p>Navigate to your personal Github settings by clicking on your avatar in the upper right corner and selecting “settings.” Then select “Codespaces in the right-hand menu.” The Codespaces secrets section is right below the Dotfiles setting that we were interacting with earlier.</p>
+
+<p>Click the “New secret” button. Type the name of the secret exactly how you want it to appear as an environment variable. Next provide the value of the secret and select the repositories that will need the secret. Note that you can always update the secret value later but you cannot get it to display when you click the “Update” button. You can also add or remove the repositories that the secret is available to at any time.</p>
+
+<p>You should create a new AWS Identity that is dedicated to Codespaces and generate a new AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. The reason that I recommend a dedicated key is that by using dedicated keys for different purposes, it is actually easier to detect and isolate a key compromise.</p>
+
+<p>For the AWS region, we will add a line to the <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file that reads:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+</code></pre></div></div>
+
+<p>So update that file so that it looks like the following when you are done:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" }
+}
+</code></pre></div></div>
+
+<p>When that is done, let’s spin up a new codespace for our “space2” repository and let’s test it.</p>
+
+<p>Rerun <code class="language-plaintext highlighter-rouge">aws sts get-caller-identity</code> once the prompt appears. We should get a result that looks like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "UserId": "AIDAEXAMPLEKEY",
+    "Account": "123456789012",
+    "Arn": "arn:aws:iam::123456789012:user/codespaces"
+}
+</code></pre></div></div>
+
+<p>Awesome. Now run <code class="language-plaintext highlighter-rouge">env | grep AWS</code> and you should see something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AWS_DEFAULT_REGION=us-east-1
+AWS_SECRET_ACCESS_KEY=GWbYrZZZREDACTEDZZZ21JRxpCfax
+AWS_ACCESS_KEY_ID=AIDAEXAMPLEKEY
+</code></pre></div></div>
+
+<h2 id="the-azure-secrets">The Azure Secrets</h2>
+
+<p>For Azure, we need to generate a service principal. The easiest way to do this is to log into your Azure portal and use the Cloud Shell and run:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>az ad sp create-for-rbac
+</code></pre></div></div>
+
+<p>And you will get output that looks like the following:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>In a future release, this command will NOT create a 'Contributor' role assignment by default. If needed, use the --role argument to explicitly create a role assignment.
+Creating 'Contributor' role assignment under scope '/subscriptions/911d9999-9999999999-9999a4f55a'
+The output includes credentials that you must protect. Be sure that you do not include these credentials in your code or check the credentials into your source control. For more information, see https://aka.ms/azadsp-cli
+'name' property in the output is deprecated and will be removed in the future. Use 'appId' instead.
+{
+  "appId": "e564cf70-c358-40e3-adeb-83d015ebcc10",
+  "displayName": "azure-cli-2021-10-23-21-17-11",
+  "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+  "password": "DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U",
+  "tenant": "e9439999999999999999999af64c0"
+}
+</code></pre></div></div>
+
+<p>Note that by default that command created a service principal with the “Contributor” role for the whole subscription. Is it over permissioned? Yes, most likely, and that all depends on what permissions that the repositories that you create will actually need to do. Most importantly <strong>protect these credentials</strong>.</p>
+
+<p>Next, while referring to the output from your cloud shell, set the following three Codespaces Secrets as was done for AWS:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AZURE_TENANT_ID=e9439999999999999999999af64c0                 &lt;--"tenant"
+AZURE_CLIENT_SECRET=DHZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ4U        &lt;--"password"
+AZURE_CLIENT_ID=e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10           &lt;--"name"
+</code></pre></div></div>
+
+<p>Since we want to be able to run Azure CLI commands as soon as the container boots up, we need to add a configuration to the  <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file that logs us into Azure but uses the secrets that get set as environment variables. Here is the command that can do that:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
+</code></pre></div></div>
+
+<p>So we would need to make the <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file read as follows, by adding in the line with the <code class="language-plaintext highlighter-rouge">postStartCommand</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID"
+}
+</code></pre></div></div>
+
+<p>Great. Let’s test the latest incarnation. Delete any previous code spaces and spin up a new one for the ‘space2’ repository.</p>
+
+<p>To test it, run the following command once the prompt appears:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>az account show
+</code></pre></div></div>
+
+<p>The returned results should look like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "environmentName": "AzureCloud",
+  "homeTenantId": "e9439999999999999999999af64c0",
+  "id": "911d9999-9999999999-9999a4f55a",
+  "isDefault": true,
+  "managedByTenants": [],
+  "name": "Pay-As-You-Go",
+  "state": "Enabled",
+  "tenantId": "e9439999999999999999999af64c0",
+  "user": {
+    "name": "e5ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ10",
+    "type": "servicePrincipal"
+  }
+}
+</code></pre></div></div>
+
+<p><strong>NOTE:</strong> You can always delete the service principle using <code class="language-plaintext highlighter-rouge">az delete sp delete</code></p>
+
+<h2 id="the-gcp-secrets">The GCP Secrets</h2>
+
+<p>In GCP create a new Service account called “codespaces” and grant it the editor role. Yes, this is a very powerful account, but we want it to be able to do everything but grant IAM access.</p>
+
+<p>Next, create a new JSON-formatted key. The key will download.</p>
+
+<p>Now we need to base64 encode the service account key. Assuming that the only JSON file in your downloads directory is the key, we can use the following command to convert it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat *.json | base64 -w0 &gt; key_base64.txt
+</code></pre></div></div>
+
+<p>Note that the “w0” switch disables wrapping of the output which is necessary for our use case.</p>
+
+<p>Open up the <code class="language-plaintext highlighter-rouge">key_base64.txt</code> file and create a Codespaces secret. Name the secret “GCP_KEY” and paste the entire contents of the <code class="language-plaintext highlighter-rouge">key_base64.txt</code> file in as the value.</p>
+
+<p>Create another secret called “GCP_SERVICE_ACCOUNT” and paste in the name of the service account. The name should be in the format of <code class="language-plaintext highlighter-rouge">codespaces@{YOUR PROJECT ID}.iam.gserviceaccount.com</code></p>
+
+<p>Make sure that the repositories selected for both are set to ‘space2’</p>
+
+<p>Similar to the trick that we did with Azure, we are going to run a command post-launch to log our Codespace into GCP. The command we will use is:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo $GCP_KEY  | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json
+</code></pre></div></div>
+
+<p>so that will make the new <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file look like the following:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "name": "HitC Tools",
+  "image": "resistor52/hitc-tools:ep16",
+  "remoteEnv": { "AWS_DEFAULT_REGION":"us-east-1", "GCP_PROJECT_ID":"calm-energy-331601" },
+  "postStartCommand": "az login --service-principal --username $AZURE_CLIENT_ID --password $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID &amp;&amp; echo $GCP_KEY | base64 -d &gt; /tmp/key.json &amp;&amp; gcloud auth activate-service-account $GCP_SERVICE_ACCOUNT --key-file=/tmp/key.json --project=$GCP_PROJECT_ID &amp;&amp; rm /tmp/key.json"
+}
+</code></pre></div></div>
+<p>Note that the <code class="language-plaintext highlighter-rouge">remoteEnv</code> name/value pair in the JSON above also adds a new environment variable, the GCP_PROJECT_ID. Be sure to set this as appropriate for your GCP project.</p>
+
+<p>Time to test our handiwork. Delete any previous code spaces and spin up a new one for the ‘space2’ repository. Run the following command once the prompt appears:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gcloud auth list
+</code></pre></div></div>
+
+<p>The output should look similar to:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Credentialed Accounts
+ACTIVE  ACCOUNT
+*       codespaces@calm-energy-331601.iam.gserviceaccount.com
+
+To set the active account, run:
+$ gcloud config set account `ACCOUNT`
+</code></pre></div></div>
+
+<p>And while we are at it, let’s confirm that the AWS and Azure authentication still work as expected:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>az account show
+aws sts get-caller-identity
+
+</code></pre></div></div>
+
+<h2 id="wrap-up">Wrap up</h2>
+
+<p>Well, there you go. We covered a popular trend in cloud-based development called <em>Development Environments as Code</em> and looked at Github’s implementation. We looked at the default container and showed how a Github user can use dotfiles to customize it for their unique preferences. After that we used a <code class="language-plaintext highlighter-rouge">.devcontainer.json</code> file to customize the dev environment for the specific needs of our repository. In this case, our goal was to have a dev environment that allows us to run CLI commands or Terraform scripts against all three of the top cloud service providers. To do that, we had to leverage Codespaces Secrets to avoid having authentication credentials in our configurations.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode16/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode16/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode16/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

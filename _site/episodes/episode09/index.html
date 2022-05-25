@@ -1,0 +1,1443 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 9 - How to Inventory EC2 Instances with a Single Line of Code &mdash; Head in the Clouds</title>
+<meta name="description" content="9 - How to Inventory EC2 Instances with a Single Line of Code
+
+
+
+Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console.
+
+For this episode, we will be using the aws ec2 describe-instances command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers.
+
+Set Up
+Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too.
+
+For example, I launched two Amazon Linux 2 instances in us-east-1, an Ubuntu instance in us-east-2, and a Windows server in us-west-2. Now we have something to work with.
+
+To follow along with this episode, I am also assuming that you have installed the AWS CLI (version 2) and have also configured it for your account. If you have not yet done that, please pause the video and get that taken care of.
+
+Let me show you my configuration:
+
+ken@msi:~$ aws configure
+AWS Access Key ID [****************W4XJ]:
+AWS Secret Access Key [****************GAzD]:
+Default region name [us-east-1]:
+Default output format [json]:
+
+
+Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region.
+
+Once that is done, we can now run some CLI commands with some command-line kung fu.
+
+The describe-instances Command
+
+First, lets start with the basic “describe-instances” command. To run that, just type:
+
+aws ec2 describe-instances
+
+
+This command outputs several lines of JSON output, because I have two instances running in my default region of us-east-1.
+
+Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a query parameter to select the data elements of interest.
+
+Using a Query Parameter
+
+In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface. But if we looks over the JSON output, maybe we are interested in the following items:
+
+
+  InstanceId
+  State (Running, Stopped, Terminated, etc.)
+  AvailabilityZone
+  PublicIpAddress
+  LaunchTime
+
+
+Well, in that case we would our query parameter would become:
+
+'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+Which would make our full command to be:
+
+aws ec2 describe-instances --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+And this produces output that will looks something like
+
+[
+    [
+        [
+            "i-0206766afa3124133",
+            "running",
+            "us-east-1c",
+            "18.210.12.130",
+            "2021-07-22T23:38:59+00:00"
+        ],
+        [
+            "i-057026ecacfbfa82d",
+            "running",
+            "us-east-1c",
+            "3.239.21.164",
+            "2021-07-22T23:38:59+00:00"
+        ]
+    ]
+]
+
+
+Of course, your metadata will be different, but the format should look similar.
+
+Format the Output as a Table
+
+Now let’s add in another parameter so that our output is displayed as a table:
+
+--output table
+
+
+This makes our revised command become:
+
+aws ec2 describe-instances --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+This command produces the following output, displayed as a table:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+much more readable!
+
+Describing Instances in Other Regions
+
+if we want to describe the instances in another region, simply use the “region” parameter with the command:
+
+--region "us-east-2"
+
+
+This makes our revised command become:
+
+aws ec2 describe-instances --region "us-east-2" --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+And now we see the data from this other region:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+Great, but what if we want to describe the instances across all of the regions for our AWS account? To
+do that, we need to use a “for loop” and a “subshell”
+
+Looping
+A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop.
+
+For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command:
+
+for pet in cat dog bunny hampster goldfish; do echo "I have a $pet"; done
+
+
+would result in:
+
+I have a cat
+I have a dog
+I have a bunny
+I have a hampster
+I have a goldfish
+
+
+Subshells
+
+Sometimes we want to use the output of one command as part of another command.
+
+As a simple example, we could run the date command in a subshell and use that in an echo command:
+
+echo "today is $(date)"
+
+
+results in:
+
+today is Thu Jul 22 21:18:37 EDT 2021
+
+
+We inform BASH that we want to run a subshell by enclosing the command with $( and )
+
+Get a List of All AWS Regions
+
+AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time.
+
+To do this, AWS provides the describe-regions command. Try it out:
+
+aws ec2 describe-regions
+
+
+Note that the output has extraneous information, so we need to use a query parameter.
+
+aws ec2 describe-regions --query 'Regions[].RegionName'
+
+
+That yields:
+
+[
+    "eu-north-1",
+    "ap-south-1",
+    "eu-west-3",
+    "eu-west-2",
+    "eu-west-1",
+    "ap-northeast-3",
+    "ap-northeast-2",
+    "ap-northeast-1",
+    "sa-east-1",
+    "ca-central-1",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "eu-central-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2"
+]
+
+
+Good, but we want a simple list, not a JSON array, so lets use --output text as follows:
+
+aws ec2 describe-regions --query 'Regions[].RegionName' --output text
+
+
+And this gives us:
+
+eu-north-1      ap-south-1      eu-west-3       eu-west-2       eu-west-1       ap-northeast-3  ap-northeast-2  ap-northeast-1  sa-east-1       ca-central-1    ap-southeast-1  ap-southeast-2  eu-central-1
+    us-east-1       us-east-2       us-west-1       us-west-2
+
+
+Loop Through the Results of a Subshell
+
+Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop:
+
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do echo $region; done
+
+
+now, we get:
+
+eu-north-1
+ap-south-1
+eu-west-3
+eu-west-2
+eu-west-1
+ap-northeast-3
+ap-northeast-2
+ap-northeast-1
+sa-east-1
+ca-central-1
+ap-southeast-1
+ap-southeast-2
+eu-central-1
+us-east-1
+us-east-2
+us-west-1
+us-west-2
+
+
+Putting It All Together
+
+Now that we have a functioning for loop that iterates through all of the regions, lets replace the echo $region with our describe-instances command that we worked out earlier in the episode:
+
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do aws ec2 describe-instances --region $region --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'; done
+
+
+Note that the --region parameter now has the variable $region so that the loop can iterate through each region and repeatedly call the describe-instances command for each new value.
+
+Here are my results:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-04ef44375c4f7a83a|  running |  us-west-2a |  54.218.59.234 |  2021-07-22T23:40:42+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+Wrap Up
+
+This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about:
+
+
+  VPCs
+  Security Groups
+  Peering Connections
+  Load Balancers
+  and many more assets
+
+
+Remeber that an asset that is not managed, is unlikely to be secure therefore INVENTORY EVERYTHING
+
+Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the terminate-instances command.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 9 - How to Inventory EC2 Instances with a Single Line of Code">
+<meta name="twitter:description" content="9 - How to Inventory EC2 Instances with a Single Line of Code
+
+
+
+Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console.
+
+For this episode, we will be using the aws ec2 describe-instances command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers.
+
+Set Up
+Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too.
+
+For example, I launched two Amazon Linux 2 instances in us-east-1, an Ubuntu instance in us-east-2, and a Windows server in us-west-2. Now we have something to work with.
+
+To follow along with this episode, I am also assuming that you have installed the AWS CLI (version 2) and have also configured it for your account. If you have not yet done that, please pause the video and get that taken care of.
+
+Let me show you my configuration:
+
+ken@msi:~$ aws configure
+AWS Access Key ID [****************W4XJ]:
+AWS Secret Access Key [****************GAzD]:
+Default region name [us-east-1]:
+Default output format [json]:
+
+
+Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region.
+
+Once that is done, we can now run some CLI commands with some command-line kung fu.
+
+The describe-instances Command
+
+First, lets start with the basic “describe-instances” command. To run that, just type:
+
+aws ec2 describe-instances
+
+
+This command outputs several lines of JSON output, because I have two instances running in my default region of us-east-1.
+
+Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a query parameter to select the data elements of interest.
+
+Using a Query Parameter
+
+In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface. But if we looks over the JSON output, maybe we are interested in the following items:
+
+
+  InstanceId
+  State (Running, Stopped, Terminated, etc.)
+  AvailabilityZone
+  PublicIpAddress
+  LaunchTime
+
+
+Well, in that case we would our query parameter would become:
+
+'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+Which would make our full command to be:
+
+aws ec2 describe-instances --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+And this produces output that will looks something like
+
+[
+    [
+        [
+            "i-0206766afa3124133",
+            "running",
+            "us-east-1c",
+            "18.210.12.130",
+            "2021-07-22T23:38:59+00:00"
+        ],
+        [
+            "i-057026ecacfbfa82d",
+            "running",
+            "us-east-1c",
+            "3.239.21.164",
+            "2021-07-22T23:38:59+00:00"
+        ]
+    ]
+]
+
+
+Of course, your metadata will be different, but the format should look similar.
+
+Format the Output as a Table
+
+Now let’s add in another parameter so that our output is displayed as a table:
+
+--output table
+
+
+This makes our revised command become:
+
+aws ec2 describe-instances --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+This command produces the following output, displayed as a table:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+much more readable!
+
+Describing Instances in Other Regions
+
+if we want to describe the instances in another region, simply use the “region” parameter with the command:
+
+--region "us-east-2"
+
+
+This makes our revised command become:
+
+aws ec2 describe-instances --region "us-east-2" --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+And now we see the data from this other region:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+Great, but what if we want to describe the instances across all of the regions for our AWS account? To
+do that, we need to use a “for loop” and a “subshell”
+
+Looping
+A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop.
+
+For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command:
+
+for pet in cat dog bunny hampster goldfish; do echo "I have a $pet"; done
+
+
+would result in:
+
+I have a cat
+I have a dog
+I have a bunny
+I have a hampster
+I have a goldfish
+
+
+Subshells
+
+Sometimes we want to use the output of one command as part of another command.
+
+As a simple example, we could run the date command in a subshell and use that in an echo command:
+
+echo "today is $(date)"
+
+
+results in:
+
+today is Thu Jul 22 21:18:37 EDT 2021
+
+
+We inform BASH that we want to run a subshell by enclosing the command with $( and )
+
+Get a List of All AWS Regions
+
+AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time.
+
+To do this, AWS provides the describe-regions command. Try it out:
+
+aws ec2 describe-regions
+
+
+Note that the output has extraneous information, so we need to use a query parameter.
+
+aws ec2 describe-regions --query 'Regions[].RegionName'
+
+
+That yields:
+
+[
+    "eu-north-1",
+    "ap-south-1",
+    "eu-west-3",
+    "eu-west-2",
+    "eu-west-1",
+    "ap-northeast-3",
+    "ap-northeast-2",
+    "ap-northeast-1",
+    "sa-east-1",
+    "ca-central-1",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "eu-central-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2"
+]
+
+
+Good, but we want a simple list, not a JSON array, so lets use --output text as follows:
+
+aws ec2 describe-regions --query 'Regions[].RegionName' --output text
+
+
+And this gives us:
+
+eu-north-1      ap-south-1      eu-west-3       eu-west-2       eu-west-1       ap-northeast-3  ap-northeast-2  ap-northeast-1  sa-east-1       ca-central-1    ap-southeast-1  ap-southeast-2  eu-central-1
+    us-east-1       us-east-2       us-west-1       us-west-2
+
+
+Loop Through the Results of a Subshell
+
+Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop:
+
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do echo $region; done
+
+
+now, we get:
+
+eu-north-1
+ap-south-1
+eu-west-3
+eu-west-2
+eu-west-1
+ap-northeast-3
+ap-northeast-2
+ap-northeast-1
+sa-east-1
+ca-central-1
+ap-southeast-1
+ap-southeast-2
+eu-central-1
+us-east-1
+us-east-2
+us-west-1
+us-west-2
+
+
+Putting It All Together
+
+Now that we have a functioning for loop that iterates through all of the regions, lets replace the echo $region with our describe-instances command that we worked out earlier in the episode:
+
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do aws ec2 describe-instances --region $region --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'; done
+
+
+Note that the --region parameter now has the variable $region so that the loop can iterate through each region and repeatedly call the describe-instances command for each new value.
+
+Here are my results:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-04ef44375c4f7a83a|  running |  us-west-2a |  54.218.59.234 |  2021-07-22T23:40:42+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+Wrap Up
+
+This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about:
+
+
+  VPCs
+  Security Groups
+  Peering Connections
+  Load Balancers
+  and many more assets
+
+
+Remeber that an asset that is not managed, is unlikely to be secure therefore INVENTORY EVERYTHING
+
+Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the terminate-instances command.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 9 - How to Inventory EC2 Instances with a Single Line of Code">
+<meta property="og:description" content="9 - How to Inventory EC2 Instances with a Single Line of Code
+
+
+
+Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console.
+
+For this episode, we will be using the aws ec2 describe-instances command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers.
+
+Set Up
+Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too.
+
+For example, I launched two Amazon Linux 2 instances in us-east-1, an Ubuntu instance in us-east-2, and a Windows server in us-west-2. Now we have something to work with.
+
+To follow along with this episode, I am also assuming that you have installed the AWS CLI (version 2) and have also configured it for your account. If you have not yet done that, please pause the video and get that taken care of.
+
+Let me show you my configuration:
+
+ken@msi:~$ aws configure
+AWS Access Key ID [****************W4XJ]:
+AWS Secret Access Key [****************GAzD]:
+Default region name [us-east-1]:
+Default output format [json]:
+
+
+Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region.
+
+Once that is done, we can now run some CLI commands with some command-line kung fu.
+
+The describe-instances Command
+
+First, lets start with the basic “describe-instances” command. To run that, just type:
+
+aws ec2 describe-instances
+
+
+This command outputs several lines of JSON output, because I have two instances running in my default region of us-east-1.
+
+Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a query parameter to select the data elements of interest.
+
+Using a Query Parameter
+
+In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface. But if we looks over the JSON output, maybe we are interested in the following items:
+
+
+  InstanceId
+  State (Running, Stopped, Terminated, etc.)
+  AvailabilityZone
+  PublicIpAddress
+  LaunchTime
+
+
+Well, in that case we would our query parameter would become:
+
+'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+Which would make our full command to be:
+
+aws ec2 describe-instances --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+And this produces output that will looks something like
+
+[
+    [
+        [
+            "i-0206766afa3124133",
+            "running",
+            "us-east-1c",
+            "18.210.12.130",
+            "2021-07-22T23:38:59+00:00"
+        ],
+        [
+            "i-057026ecacfbfa82d",
+            "running",
+            "us-east-1c",
+            "3.239.21.164",
+            "2021-07-22T23:38:59+00:00"
+        ]
+    ]
+]
+
+
+Of course, your metadata will be different, but the format should look similar.
+
+Format the Output as a Table
+
+Now let’s add in another parameter so that our output is displayed as a table:
+
+--output table
+
+
+This makes our revised command become:
+
+aws ec2 describe-instances --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+This command produces the following output, displayed as a table:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+much more readable!
+
+Describing Instances in Other Regions
+
+if we want to describe the instances in another region, simply use the “region” parameter with the command:
+
+--region "us-east-2"
+
+
+This makes our revised command become:
+
+aws ec2 describe-instances --region "us-east-2" --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+
+
+And now we see the data from this other region:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+Great, but what if we want to describe the instances across all of the regions for our AWS account? To
+do that, we need to use a “for loop” and a “subshell”
+
+Looping
+A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop.
+
+For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command:
+
+for pet in cat dog bunny hampster goldfish; do echo "I have a $pet"; done
+
+
+would result in:
+
+I have a cat
+I have a dog
+I have a bunny
+I have a hampster
+I have a goldfish
+
+
+Subshells
+
+Sometimes we want to use the output of one command as part of another command.
+
+As a simple example, we could run the date command in a subshell and use that in an echo command:
+
+echo "today is $(date)"
+
+
+results in:
+
+today is Thu Jul 22 21:18:37 EDT 2021
+
+
+We inform BASH that we want to run a subshell by enclosing the command with $( and )
+
+Get a List of All AWS Regions
+
+AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time.
+
+To do this, AWS provides the describe-regions command. Try it out:
+
+aws ec2 describe-regions
+
+
+Note that the output has extraneous information, so we need to use a query parameter.
+
+aws ec2 describe-regions --query 'Regions[].RegionName'
+
+
+That yields:
+
+[
+    "eu-north-1",
+    "ap-south-1",
+    "eu-west-3",
+    "eu-west-2",
+    "eu-west-1",
+    "ap-northeast-3",
+    "ap-northeast-2",
+    "ap-northeast-1",
+    "sa-east-1",
+    "ca-central-1",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "eu-central-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2"
+]
+
+
+Good, but we want a simple list, not a JSON array, so lets use --output text as follows:
+
+aws ec2 describe-regions --query 'Regions[].RegionName' --output text
+
+
+And this gives us:
+
+eu-north-1      ap-south-1      eu-west-3       eu-west-2       eu-west-1       ap-northeast-3  ap-northeast-2  ap-northeast-1  sa-east-1       ca-central-1    ap-southeast-1  ap-southeast-2  eu-central-1
+    us-east-1       us-east-2       us-west-1       us-west-2
+
+
+Loop Through the Results of a Subshell
+
+Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop:
+
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do echo $region; done
+
+
+now, we get:
+
+eu-north-1
+ap-south-1
+eu-west-3
+eu-west-2
+eu-west-1
+ap-northeast-3
+ap-northeast-2
+ap-northeast-1
+sa-east-1
+ca-central-1
+ap-southeast-1
+ap-southeast-2
+eu-central-1
+us-east-1
+us-east-2
+us-west-1
+us-west-2
+
+
+Putting It All Together
+
+Now that we have a functioning for loop that iterates through all of the regions, lets replace the echo $region with our describe-instances command that we worked out earlier in the episode:
+
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do aws ec2 describe-instances --region $region --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'; done
+
+
+Note that the --region parameter now has the variable $region so that the loop can iterate through each region and repeatedly call the describe-instances command for each new value.
+
+Here are my results:
+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-04ef44375c4f7a83a|  running |  us-west-2a |  54.218.59.234 |  2021-07-22T23:40:42+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+
+
+Wrap Up
+
+This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about:
+
+
+  VPCs
+  Security Groups
+  Peering Connections
+  Load Balancers
+  and many more assets
+
+
+Remeber that an asset that is not managed, is unlikely to be secure therefore INVENTORY EVERYTHING
+
+Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the terminate-instances command.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta property="og:url" content="/episodes/episode09/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode09/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 9 - How to Inventory EC2 Instances with a Single Line of Code | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 9 - How to Inventory EC2 Instances with a Single Line of Code" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="9 - How to Inventory EC2 Instances with a Single Line of Code Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console. For this episode, we will be using the aws ec2 describe-instances command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers. Set Up Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too. For example, I launched two Amazon Linux 2 instances in us-east-1, an Ubuntu instance in us-east-2, and a Windows server in us-west-2. Now we have something to work with. To follow along with this episode, I am also assuming that you have installed the AWS CLI (version 2) and have also configured it for your account. If you have not yet done that, please pause the video and get that taken care of. Let me show you my configuration: ken@msi:~$ aws configure AWS Access Key ID [****************W4XJ]: AWS Secret Access Key [****************GAzD]: Default region name [us-east-1]: Default output format [json]: Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region. Once that is done, we can now run some CLI commands with some command-line kung fu. The describe-instances Command First, lets start with the basic “describe-instances” command. To run that, just type: aws ec2 describe-instances This command outputs several lines of JSON output, because I have two instances running in my default region of us-east-1. Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a query parameter to select the data elements of interest. Using a Query Parameter In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface. But if we looks over the JSON output, maybe we are interested in the following items: InstanceId State (Running, Stopped, Terminated, etc.) AvailabilityZone PublicIpAddress LaunchTime Well, in that case we would our query parameter would become: &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; Which would make our full command to be: aws ec2 describe-instances --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; And this produces output that will looks something like [ [ [ &quot;i-0206766afa3124133&quot;, &quot;running&quot;, &quot;us-east-1c&quot;, &quot;18.210.12.130&quot;, &quot;2021-07-22T23:38:59+00:00&quot; ], [ &quot;i-057026ecacfbfa82d&quot;, &quot;running&quot;, &quot;us-east-1c&quot;, &quot;3.239.21.164&quot;, &quot;2021-07-22T23:38:59+00:00&quot; ] ] ] Of course, your metadata will be different, but the format should look similar. Format the Output as a Table Now let’s add in another parameter so that our output is displayed as a table: --output table This makes our revised command become: aws ec2 describe-instances --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; This command produces the following output, displayed as a table: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0206766afa3124133| running | us-east-1c | 18.210.12.130 | 2021-07-22T23:38:59+00:00 | | i-057026ecacfbfa82d| running | us-east-1c | 3.239.21.164 | 2021-07-22T23:38:59+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ much more readable! Describing Instances in Other Regions if we want to describe the instances in another region, simply use the “region” parameter with the command: --region &quot;us-east-2&quot; This makes our revised command become: aws ec2 describe-instances --region &quot;us-east-2&quot; --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; And now we see the data from this other region: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0e8bf8668aabfefcd| running | us-east-2a | 13.58.143.127 | 2021-07-22T23:39:52+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ Great, but what if we want to describe the instances across all of the regions for our AWS account? To do that, we need to use a “for loop” and a “subshell” Looping A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop. For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command: for pet in cat dog bunny hampster goldfish; do echo &quot;I have a $pet&quot;; done would result in: I have a cat I have a dog I have a bunny I have a hampster I have a goldfish Subshells Sometimes we want to use the output of one command as part of another command. As a simple example, we could run the date command in a subshell and use that in an echo command: echo &quot;today is $(date)&quot; results in: today is Thu Jul 22 21:18:37 EDT 2021 We inform BASH that we want to run a subshell by enclosing the command with $( and ) Get a List of All AWS Regions AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time. To do this, AWS provides the describe-regions command. Try it out: aws ec2 describe-regions Note that the output has extraneous information, so we need to use a query parameter. aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; That yields: [ &quot;eu-north-1&quot;, &quot;ap-south-1&quot;, &quot;eu-west-3&quot;, &quot;eu-west-2&quot;, &quot;eu-west-1&quot;, &quot;ap-northeast-3&quot;, &quot;ap-northeast-2&quot;, &quot;ap-northeast-1&quot;, &quot;sa-east-1&quot;, &quot;ca-central-1&quot;, &quot;ap-southeast-1&quot;, &quot;ap-southeast-2&quot;, &quot;eu-central-1&quot;, &quot;us-east-1&quot;, &quot;us-east-2&quot;, &quot;us-west-1&quot;, &quot;us-west-2&quot; ] Good, but we want a simple list, not a JSON array, so lets use --output text as follows: aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text And this gives us: eu-north-1 ap-south-1 eu-west-3 eu-west-2 eu-west-1 ap-northeast-3 ap-northeast-2 ap-northeast-1 sa-east-1 ca-central-1 ap-southeast-1 ap-southeast-2 eu-central-1 us-east-1 us-east-2 us-west-1 us-west-2 Loop Through the Results of a Subshell Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop: for region in $(aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text); do echo $region; done now, we get: eu-north-1 ap-south-1 eu-west-3 eu-west-2 eu-west-1 ap-northeast-3 ap-northeast-2 ap-northeast-1 sa-east-1 ca-central-1 ap-southeast-1 ap-southeast-2 eu-central-1 us-east-1 us-east-2 us-west-1 us-west-2 Putting It All Together Now that we have a functioning for loop that iterates through all of the regions, lets replace the echo $region with our describe-instances command that we worked out earlier in the episode: for region in $(aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text); do aws ec2 describe-instances --region $region --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39;; done Note that the --region parameter now has the variable $region so that the loop can iterate through each region and repeatedly call the describe-instances command for each new value. Here are my results: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0206766afa3124133| running | us-east-1c | 18.210.12.130 | 2021-07-22T23:38:59+00:00 | | i-057026ecacfbfa82d| running | us-east-1c | 3.239.21.164 | 2021-07-22T23:38:59+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0e8bf8668aabfefcd| running | us-east-2a | 13.58.143.127 | 2021-07-22T23:39:52+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-04ef44375c4f7a83a| running | us-west-2a | 54.218.59.234 | 2021-07-22T23:40:42+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ Wrap Up This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about: VPCs Security Groups Peering Connections Load Balancers and many more assets Remeber that an asset that is not managed, is unlikely to be secure therefore INVENTORY EVERYTHING Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the terminate-instances command. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<meta property="og:description" content="9 - How to Inventory EC2 Instances with a Single Line of Code Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console. For this episode, we will be using the aws ec2 describe-instances command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers. Set Up Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too. For example, I launched two Amazon Linux 2 instances in us-east-1, an Ubuntu instance in us-east-2, and a Windows server in us-west-2. Now we have something to work with. To follow along with this episode, I am also assuming that you have installed the AWS CLI (version 2) and have also configured it for your account. If you have not yet done that, please pause the video and get that taken care of. Let me show you my configuration: ken@msi:~$ aws configure AWS Access Key ID [****************W4XJ]: AWS Secret Access Key [****************GAzD]: Default region name [us-east-1]: Default output format [json]: Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region. Once that is done, we can now run some CLI commands with some command-line kung fu. The describe-instances Command First, lets start with the basic “describe-instances” command. To run that, just type: aws ec2 describe-instances This command outputs several lines of JSON output, because I have two instances running in my default region of us-east-1. Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a query parameter to select the data elements of interest. Using a Query Parameter In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface. But if we looks over the JSON output, maybe we are interested in the following items: InstanceId State (Running, Stopped, Terminated, etc.) AvailabilityZone PublicIpAddress LaunchTime Well, in that case we would our query parameter would become: &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; Which would make our full command to be: aws ec2 describe-instances --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; And this produces output that will looks something like [ [ [ &quot;i-0206766afa3124133&quot;, &quot;running&quot;, &quot;us-east-1c&quot;, &quot;18.210.12.130&quot;, &quot;2021-07-22T23:38:59+00:00&quot; ], [ &quot;i-057026ecacfbfa82d&quot;, &quot;running&quot;, &quot;us-east-1c&quot;, &quot;3.239.21.164&quot;, &quot;2021-07-22T23:38:59+00:00&quot; ] ] ] Of course, your metadata will be different, but the format should look similar. Format the Output as a Table Now let’s add in another parameter so that our output is displayed as a table: --output table This makes our revised command become: aws ec2 describe-instances --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; This command produces the following output, displayed as a table: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0206766afa3124133| running | us-east-1c | 18.210.12.130 | 2021-07-22T23:38:59+00:00 | | i-057026ecacfbfa82d| running | us-east-1c | 3.239.21.164 | 2021-07-22T23:38:59+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ much more readable! Describing Instances in Other Regions if we want to describe the instances in another region, simply use the “region” parameter with the command: --region &quot;us-east-2&quot; This makes our revised command become: aws ec2 describe-instances --region &quot;us-east-2&quot; --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; And now we see the data from this other region: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0e8bf8668aabfefcd| running | us-east-2a | 13.58.143.127 | 2021-07-22T23:39:52+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ Great, but what if we want to describe the instances across all of the regions for our AWS account? To do that, we need to use a “for loop” and a “subshell” Looping A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop. For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command: for pet in cat dog bunny hampster goldfish; do echo &quot;I have a $pet&quot;; done would result in: I have a cat I have a dog I have a bunny I have a hampster I have a goldfish Subshells Sometimes we want to use the output of one command as part of another command. As a simple example, we could run the date command in a subshell and use that in an echo command: echo &quot;today is $(date)&quot; results in: today is Thu Jul 22 21:18:37 EDT 2021 We inform BASH that we want to run a subshell by enclosing the command with $( and ) Get a List of All AWS Regions AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time. To do this, AWS provides the describe-regions command. Try it out: aws ec2 describe-regions Note that the output has extraneous information, so we need to use a query parameter. aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; That yields: [ &quot;eu-north-1&quot;, &quot;ap-south-1&quot;, &quot;eu-west-3&quot;, &quot;eu-west-2&quot;, &quot;eu-west-1&quot;, &quot;ap-northeast-3&quot;, &quot;ap-northeast-2&quot;, &quot;ap-northeast-1&quot;, &quot;sa-east-1&quot;, &quot;ca-central-1&quot;, &quot;ap-southeast-1&quot;, &quot;ap-southeast-2&quot;, &quot;eu-central-1&quot;, &quot;us-east-1&quot;, &quot;us-east-2&quot;, &quot;us-west-1&quot;, &quot;us-west-2&quot; ] Good, but we want a simple list, not a JSON array, so lets use --output text as follows: aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text And this gives us: eu-north-1 ap-south-1 eu-west-3 eu-west-2 eu-west-1 ap-northeast-3 ap-northeast-2 ap-northeast-1 sa-east-1 ca-central-1 ap-southeast-1 ap-southeast-2 eu-central-1 us-east-1 us-east-2 us-west-1 us-west-2 Loop Through the Results of a Subshell Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop: for region in $(aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text); do echo $region; done now, we get: eu-north-1 ap-south-1 eu-west-3 eu-west-2 eu-west-1 ap-northeast-3 ap-northeast-2 ap-northeast-1 sa-east-1 ca-central-1 ap-southeast-1 ap-southeast-2 eu-central-1 us-east-1 us-east-2 us-west-1 us-west-2 Putting It All Together Now that we have a functioning for loop that iterates through all of the regions, lets replace the echo $region with our describe-instances command that we worked out earlier in the episode: for region in $(aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text); do aws ec2 describe-instances --region $region --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39;; done Note that the --region parameter now has the variable $region so that the loop can iterate through each region and repeatedly call the describe-instances command for each new value. Here are my results: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0206766afa3124133| running | us-east-1c | 18.210.12.130 | 2021-07-22T23:38:59+00:00 | | i-057026ecacfbfa82d| running | us-east-1c | 3.239.21.164 | 2021-07-22T23:38:59+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0e8bf8668aabfefcd| running | us-east-2a | 13.58.143.127 | 2021-07-22T23:39:52+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-04ef44375c4f7a83a| running | us-west-2a | 54.218.59.234 | 2021-07-22T23:40:42+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ Wrap Up This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about: VPCs Security Groups Peering Connections Load Balancers and many more assets Remeber that an asset that is not managed, is unlikely to be secure therefore INVENTORY EVERYTHING Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the terminate-instances command. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode09/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode09/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 9 - How to Inventory EC2 Instances with a Single Line of Code" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:39-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"9 - How to Inventory EC2 Instances with a Single Line of Code Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console. For this episode, we will be using the aws ec2 describe-instances command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers. Set Up Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too. For example, I launched two Amazon Linux 2 instances in us-east-1, an Ubuntu instance in us-east-2, and a Windows server in us-west-2. Now we have something to work with. To follow along with this episode, I am also assuming that you have installed the AWS CLI (version 2) and have also configured it for your account. If you have not yet done that, please pause the video and get that taken care of. Let me show you my configuration: ken@msi:~$ aws configure AWS Access Key ID [****************W4XJ]: AWS Secret Access Key [****************GAzD]: Default region name [us-east-1]: Default output format [json]: Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region. Once that is done, we can now run some CLI commands with some command-line kung fu. The describe-instances Command First, lets start with the basic “describe-instances” command. To run that, just type: aws ec2 describe-instances This command outputs several lines of JSON output, because I have two instances running in my default region of us-east-1. Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a query parameter to select the data elements of interest. Using a Query Parameter In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface. But if we looks over the JSON output, maybe we are interested in the following items: InstanceId State (Running, Stopped, Terminated, etc.) AvailabilityZone PublicIpAddress LaunchTime Well, in that case we would our query parameter would become: &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; Which would make our full command to be: aws ec2 describe-instances --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; And this produces output that will looks something like [ [ [ &quot;i-0206766afa3124133&quot;, &quot;running&quot;, &quot;us-east-1c&quot;, &quot;18.210.12.130&quot;, &quot;2021-07-22T23:38:59+00:00&quot; ], [ &quot;i-057026ecacfbfa82d&quot;, &quot;running&quot;, &quot;us-east-1c&quot;, &quot;3.239.21.164&quot;, &quot;2021-07-22T23:38:59+00:00&quot; ] ] ] Of course, your metadata will be different, but the format should look similar. Format the Output as a Table Now let’s add in another parameter so that our output is displayed as a table: --output table This makes our revised command become: aws ec2 describe-instances --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; This command produces the following output, displayed as a table: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0206766afa3124133| running | us-east-1c | 18.210.12.130 | 2021-07-22T23:38:59+00:00 | | i-057026ecacfbfa82d| running | us-east-1c | 3.239.21.164 | 2021-07-22T23:38:59+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ much more readable! Describing Instances in Other Regions if we want to describe the instances in another region, simply use the “region” parameter with the command: --region &quot;us-east-2&quot; This makes our revised command become: aws ec2 describe-instances --region &quot;us-east-2&quot; --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39; And now we see the data from this other region: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0e8bf8668aabfefcd| running | us-east-2a | 13.58.143.127 | 2021-07-22T23:39:52+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ Great, but what if we want to describe the instances across all of the regions for our AWS account? To do that, we need to use a “for loop” and a “subshell” Looping A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop. For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command: for pet in cat dog bunny hampster goldfish; do echo &quot;I have a $pet&quot;; done would result in: I have a cat I have a dog I have a bunny I have a hampster I have a goldfish Subshells Sometimes we want to use the output of one command as part of another command. As a simple example, we could run the date command in a subshell and use that in an echo command: echo &quot;today is $(date)&quot; results in: today is Thu Jul 22 21:18:37 EDT 2021 We inform BASH that we want to run a subshell by enclosing the command with $( and ) Get a List of All AWS Regions AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time. To do this, AWS provides the describe-regions command. Try it out: aws ec2 describe-regions Note that the output has extraneous information, so we need to use a query parameter. aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; That yields: [ &quot;eu-north-1&quot;, &quot;ap-south-1&quot;, &quot;eu-west-3&quot;, &quot;eu-west-2&quot;, &quot;eu-west-1&quot;, &quot;ap-northeast-3&quot;, &quot;ap-northeast-2&quot;, &quot;ap-northeast-1&quot;, &quot;sa-east-1&quot;, &quot;ca-central-1&quot;, &quot;ap-southeast-1&quot;, &quot;ap-southeast-2&quot;, &quot;eu-central-1&quot;, &quot;us-east-1&quot;, &quot;us-east-2&quot;, &quot;us-west-1&quot;, &quot;us-west-2&quot; ] Good, but we want a simple list, not a JSON array, so lets use --output text as follows: aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text And this gives us: eu-north-1 ap-south-1 eu-west-3 eu-west-2 eu-west-1 ap-northeast-3 ap-northeast-2 ap-northeast-1 sa-east-1 ca-central-1 ap-southeast-1 ap-southeast-2 eu-central-1 us-east-1 us-east-2 us-west-1 us-west-2 Loop Through the Results of a Subshell Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop: for region in $(aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text); do echo $region; done now, we get: eu-north-1 ap-south-1 eu-west-3 eu-west-2 eu-west-1 ap-northeast-3 ap-northeast-2 ap-northeast-1 sa-east-1 ca-central-1 ap-southeast-1 ap-southeast-2 eu-central-1 us-east-1 us-east-2 us-west-1 us-west-2 Putting It All Together Now that we have a functioning for loop that iterates through all of the regions, lets replace the echo $region with our describe-instances command that we worked out earlier in the episode: for region in $(aws ec2 describe-regions --query &#39;Regions[].RegionName&#39; --output text); do aws ec2 describe-instances --region $region --output table --query &#39;Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]&#39;; done Note that the --region parameter now has the variable $region so that the loop can iterate through each region and repeatedly call the describe-instances command for each new value. Here are my results: ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0206766afa3124133| running | us-east-1c | 18.210.12.130 | 2021-07-22T23:38:59+00:00 | | i-057026ecacfbfa82d| running | us-east-1c | 3.239.21.164 | 2021-07-22T23:38:59+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-0e8bf8668aabfefcd| running | us-east-2a | 13.58.143.127 | 2021-07-22T23:39:52+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ ------------------------------------------------------------------------------------------------ | DescribeInstances | +---------------------+----------+-------------+----------------+------------------------------+ | i-04ef44375c4f7a83a| running | us-west-2a | 54.218.59.234 | 2021-07-22T23:40:42+00:00 | +---------------------+----------+-------------+----------------+------------------------------+ Wrap Up This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about: VPCs Security Groups Peering Connections Load Balancers and many more assets Remeber that an asset that is not managed, is unlikely to be secure therefore INVENTORY EVERYTHING Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the terminate-instances command. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care.","headline":"Episode 9 - How to Inventory EC2 Instances with a Single Line of Code","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode09/"},"url":"http://localhost:4000/episodes/episode09/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 9 - How to Inventory EC2 Instances with a Single Line of Code</h1>
+    <div class="article-wrap">
+      <p>9 - How to Inventory EC2 Instances with a Single Line of Code</p>
+
+<div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/FY4Vwvk42LQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to Episode 9 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “How to Inventory EC2 Instances with a single line of code”</p>
+
+<p>The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.</p>
+
+<p>Today’s topic will cover how to use a loop to iteratively call a cloud CLI while passing in a variable. This is a very powerful technique that can allow us to do many things much more rapidly via the terminal than could be done by the cloud provider’s web console.</p>
+
+<p>For this episode, we will be using the <code class="language-plaintext highlighter-rouge">aws ec2 describe-instances</code> command, but we could replace this with any of the other aws cli “describe-*” commands to generate inventories of all of our various cloud assets–and once you learn it you will almost certainly find occasions to use this technique with other cloud service providers.</p>
+
+<h2 id="set-up">Set Up</h2>
+<p>Assuming that you do not have any EC2 instances running in your AWS account, launch 2 in your default region and one more in two other regions, for at least four instances running in at least three regions. For fun, change up the operating systems too.</p>
+
+<p>For example, I launched two <strong>Amazon Linux 2</strong> instances in <strong>us-east-1</strong>, an <strong>Ubuntu</strong> instance in <strong>us-east-2</strong>, and a <strong>Windows server</strong> in <strong>us-west-2</strong>. Now we have something to work with.</p>
+
+<p>To follow along with this episode, I am also assuming that you have <a href="https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html">installed the AWS CLI (version 2)</a> and have also <a href="https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html">configured it for your account</a>. If you have not yet done that, please pause the video and get that taken care of.</p>
+
+<p>Let me show you my configuration:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ken@msi:~$ aws configure
+AWS Access Key ID [****************W4XJ]:
+AWS Secret Access Key [****************GAzD]:
+Default region name [us-east-1]:
+Default output format [json]:
+</code></pre></div></div>
+
+<p>Notice that my default region is “us-east-1” and my default output is “json,” but its ok if yours are different–just make sure you launched a couple VMs in your default region.</p>
+
+<p>Once that is done, we can now run some CLI commands with some command-line kung fu.</p>
+
+<h2 id="the-describe-instances-command">The describe-instances Command</h2>
+
+<p>First, lets start with the basic “describe-instances” command. To run that, just type:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-instances
+</code></pre></div></div>
+
+<p>This command outputs several lines of JSON output, because I have two instances running in my default region of <strong>us-east-1</strong>.</p>
+
+<p>Ok, but that is almost too much information to be able to interpret on the screen. So, let’s pair it down some. We can use a <strong>query</strong> parameter to select the data elements of interest.</p>
+
+<h2 id="using-a-query-parameter">Using a Query Parameter</h2>
+
+<p>In this episode, I am not going to take the time to discuss navigating the JSON data structure, because I have already covered that in <a href="https://headintheclouds.site/episodes/episode1">Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface</a>. But if we looks over the JSON output, maybe we are interested in the following items:</p>
+
+<ul>
+  <li>InstanceId</li>
+  <li>State (Running, Stopped, Terminated, etc.)</li>
+  <li>AvailabilityZone</li>
+  <li>PublicIpAddress</li>
+  <li>LaunchTime</li>
+</ul>
+
+<p>Well, in that case we would our query parameter would become:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+</code></pre></div></div>
+
+<p>Which would make our full command to be:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-instances --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+</code></pre></div></div>
+
+<p>And this produces output that will looks something like</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[
+    [
+        [
+            "i-0206766afa3124133",
+            "running",
+            "us-east-1c",
+            "18.210.12.130",
+            "2021-07-22T23:38:59+00:00"
+        ],
+        [
+            "i-057026ecacfbfa82d",
+            "running",
+            "us-east-1c",
+            "3.239.21.164",
+            "2021-07-22T23:38:59+00:00"
+        ]
+    ]
+]
+</code></pre></div></div>
+
+<p>Of course, your metadata will be different, but the format should look similar.</p>
+
+<h2 id="format-the-output-as-a-table">Format the Output as a Table</h2>
+
+<p>Now let’s add in another parameter so that our output is displayed as a table:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--output table
+</code></pre></div></div>
+
+<p>This makes our revised command become:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-instances --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+</code></pre></div></div>
+
+<p>This command produces the following output, displayed as a table:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+</code></pre></div></div>
+
+<p>much more readable!</p>
+
+<h2 id="describing-instances-in-other-regions">Describing Instances in Other Regions</h2>
+
+<p>if we want to describe the instances in another region, simply use the “region” parameter with the command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>--region "us-east-2"
+</code></pre></div></div>
+
+<p>This makes our revised command become:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-instances --region "us-east-2" --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'
+</code></pre></div></div>
+
+<p>And now we see the data from this other region:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+</code></pre></div></div>
+
+<p>Great, but what if we want to describe the instances across all of the regions for our AWS account? To
+do that, we need to use a “for loop” and a “subshell”</p>
+
+<h2 id="looping">Looping</h2>
+<p>A “for loop” assigns each element of a set to a variable one at a time and then performs various commands using that value and, when done, iterates on to the next variable, repeating the various commands inside the loop.</p>
+
+<p>For example, we could have a set of animals that we loop through with a variable called “pet” and use that variable in a command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>for pet in cat dog bunny hampster goldfish; do echo "I have a $pet"; done
+</code></pre></div></div>
+
+<p>would result in:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>I have a cat
+I have a dog
+I have a bunny
+I have a hampster
+I have a goldfish
+</code></pre></div></div>
+
+<h2 id="subshells">Subshells</h2>
+
+<p>Sometimes we want to use the output of one command as part of another command.</p>
+
+<p>As a simple example, we could run the <code class="language-plaintext highlighter-rouge">date</code> command in a subshell and use that in an echo command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "today is $(date)"
+</code></pre></div></div>
+
+<p>results in:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>today is Thu Jul 22 21:18:37 EDT 2021
+</code></pre></div></div>
+
+<p>We inform BASH that we want to run a subshell by enclosing the command with <code class="language-plaintext highlighter-rouge">$(</code> and <code class="language-plaintext highlighter-rouge">)</code></p>
+
+<h2 id="get-a-list-of-all-aws-regions">Get a List of All AWS Regions</h2>
+
+<p>AWS adds new regions from time to time. So to be certain that we know all of the regions, the best practice is to query AWS for this information at run-time.</p>
+
+<p>To do this, AWS provides the <strong>describe-regions</strong> command. Try it out:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-regions
+</code></pre></div></div>
+
+<p>Note that the output has extraneous information, so we need to use a query parameter.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-regions --query 'Regions[].RegionName'
+</code></pre></div></div>
+
+<p>That yields:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[
+    "eu-north-1",
+    "ap-south-1",
+    "eu-west-3",
+    "eu-west-2",
+    "eu-west-1",
+    "ap-northeast-3",
+    "ap-northeast-2",
+    "ap-northeast-1",
+    "sa-east-1",
+    "ca-central-1",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "eu-central-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2"
+]
+</code></pre></div></div>
+
+<p>Good, but we want a simple list, not a JSON array, so lets use <code class="language-plaintext highlighter-rouge">--output text</code> as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-regions --query 'Regions[].RegionName' --output text
+</code></pre></div></div>
+
+<p>And this gives us:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>eu-north-1      ap-south-1      eu-west-3       eu-west-2       eu-west-1       ap-northeast-3  ap-northeast-2  ap-northeast-1  sa-east-1       ca-central-1    ap-southeast-1  ap-southeast-2  eu-central-1
+    us-east-1       us-east-2       us-west-1       us-west-2
+</code></pre></div></div>
+
+<h2 id="loop-through-the-results-of-a-subshell">Loop Through the Results of a Subshell</h2>
+
+<p>Now that we have the regions output via a CLI command, we can put that CLI command in a subshell and use that for our loop:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do echo $region; done
+</code></pre></div></div>
+
+<p>now, we get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>eu-north-1
+ap-south-1
+eu-west-3
+eu-west-2
+eu-west-1
+ap-northeast-3
+ap-northeast-2
+ap-northeast-1
+sa-east-1
+ca-central-1
+ap-southeast-1
+ap-southeast-2
+eu-central-1
+us-east-1
+us-east-2
+us-west-1
+us-west-2
+</code></pre></div></div>
+
+<h2 id="putting-it-all-together">Putting It All Together</h2>
+
+<p>Now that we have a functioning for loop that iterates through all of the regions, lets replace the <code class="language-plaintext highlighter-rouge">echo $region</code> with our describe-instances command that we worked out earlier in the episode:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do aws ec2 describe-instances --region $region --output table --query 'Reservations[].Instances[*].[InstanceId,State.Name,Placement.AvailabilityZone,PublicIpAddress,LaunchTime]'; done
+</code></pre></div></div>
+
+<p>Note that the <code class="language-plaintext highlighter-rouge">--region</code> parameter now has the variable <code class="language-plaintext highlighter-rouge">$region</code> so that the loop can iterate through each region and repeatedly call the <code class="language-plaintext highlighter-rouge">describe-instances</code> command for each new value.</p>
+
+<p>Here are my results:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0206766afa3124133|  running |  us-east-1c |  18.210.12.130 |  2021-07-22T23:38:59+00:00   |
+|  i-057026ecacfbfa82d|  running |  us-east-1c |  3.239.21.164  |  2021-07-22T23:38:59+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-0e8bf8668aabfefcd|  running |  us-east-2a |  13.58.143.127 |  2021-07-22T23:39:52+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+------------------------------------------------------------------------------------------------
+|                                       DescribeInstances                                      |
++---------------------+----------+-------------+----------------+------------------------------+
+|  i-04ef44375c4f7a83a|  running |  us-west-2a |  54.218.59.234 |  2021-07-22T23:40:42+00:00   |
++---------------------+----------+-------------+----------------+------------------------------+
+</code></pre></div></div>
+
+<h2 id="wrap-up">Wrap Up</h2>
+
+<p>This technique is a powerful tactic to quickly generate an inventory of your EC2 instances. You might find assets in regions that you were unaware had anything. But don’t stop with EC2 instances, what about:</p>
+
+<ul>
+  <li>VPCs</li>
+  <li>Security Groups</li>
+  <li>Peering Connections</li>
+  <li>Load Balancers</li>
+  <li>and many more assets</li>
+</ul>
+
+<p>Remeber that <strong><em>an asset that is not managed, is unlikely to be secure</em></strong> therefore <strong>INVENTORY EVERYTHING</strong></p>
+
+<p>Don’t forget to turn off all of your instances! You can rerun the command to verify that they have all been terminated. And for extra credit, you could write a loop to iterate through all of your running instances and execute the <strong>terminate-instances</strong> command.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode09/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode09/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode09/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

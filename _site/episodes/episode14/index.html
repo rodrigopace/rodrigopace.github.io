@@ -1,0 +1,1863 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 14 - Make a Container of Cloud Tools &mdash; Head in the Clouds</title>
+<meta name="description" content="
+
+Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Make a Container of Cloud Tools”
+
+This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future Head in the Clouds Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP.
+
+Setup
+
+For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to Episode 13 for instructions on installing Docker.
+
+Create the Initial “HitC Tools” Image with just the AWS CLI
+
+A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be ubuntu
+
+echo 'FROM ubuntu' &gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+
+Next, we need to look up the commands to install the AWS CLI to Ubuntu.
+
+According to https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html The commands are:
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+
+But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode:
+
+docker run --name dev -it ubuntu
+
+
+and then paste in the first command:
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+
+We see that we get an error:
+
+root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+bash: curl: command not found
+
+
+
+As suspected, curl is not installed yet. Let’s install it:
+
+apt update
+apt install -y curl
+
+
+
+Ok, try the curl command again:
+
+root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 42.4M  100 42.4M    0     0  50.3M      0 --:--:-- --:--:-- --:--:-- 50.3M
+
+
+Good, try the next command:
+
+unzip awscliv2.zip
+
+
+It is not installed either, so install it:
+
+apt install -y unzip
+
+
+
+Now we can unzip the file that we downloaded to our container:
+
+unzip awscliv2.zip
+
+
+
+At this point, we can try to install the AWS CLI:
+
+sudo ./aws/install
+
+We get:
+
+root@2883310a829c:/# sudo ./aws/install
+bash: sudo: command not found
+
+
+Oops, sudo is not installed either. Let’s add it as well:
+
+apt install -y sudo
+
+
+
+And now, finally, we can run the AWS CLI installer:
+
+sudo ./aws/install
+
+
+
+And we get:
+
+root@2883310a829c:/# sudo ./aws/install
+You can now run: /usr/local/bin/aws --version
+
+
+To test that the CLI was properly installed, just run:
+
+aws --version
+
+
+And we should get something like:
+
+root@2883310a829c:/# aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+
+
+All right, hence we conclude that the full set of commands to install the AWS CLI are:
+
+apt update
+apt install -y curl unzip sudo
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm awscliv2.zip
+
+
+For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using sudo however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with sudo installed.
+
+Type exit to exit the interactive container.
+
+In a Dockerfile, it is considered a best practice to separate related commands with &amp;&amp; which means execute the following command only if the previous command ran successfully (returned an exit code of zero).
+
+Let’s add this to our Dockerfile as a RUN command:
+
+echo "# AWS CLI" &gt;&gt; Dockerfile
+echo 'RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' &gt;&gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+
+
+Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See https://docs.docker.com/engine/reference/builder/#run to learn more.
+
+Now let’s test our Dockerfile. First by building our image:
+
+docker build -t hitc-tools .
+
+
+and then by running it:
+
+docker run --rm  -it hitc-tools bash
+
+
+Now we should be able to run aws --version and see a result similar to:
+
+root@5fe7341eff0d:/# aws --version
+aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off
+
+
+As before, type exit to terminate the container.
+
+Add the Azure CLI to the Image
+
+Now to repeat the process for the Azure CLI:
+
+From the Azure documentation, we can see that the commands that we need to use are:
+
+sudo apt-get update
+sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt-get update
+sudo apt-get install azure-cli
+
+
+For the sake of space and consistency, let’s use the short form of apt versus apt-get and add the -y switch to all of the install commands to make them non-interactive:
+
+sudo apt update
+sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt update
+sudo apt install -y azure-cli
+
+
+Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using &amp;&amp;:
+
+echo "# Azure CLI" &gt;&gt; Dockerfile
+
+echo 'RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli' &gt;&gt; Dockerfile
+
+echo " " &gt;&gt; Dockerfile
+
+
+
+Now, test our latest Dockerfile:
+
+docker build -t hitc-tools .
+docker run --rm  -it hitc-tools bash
+
+
+Once we get the prompt from the container, we can run az --version and the output will look something like:
+
+ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+root@963a51baed25:/# az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/root/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+
+
+
+Very good. Exit from the container.
+
+Add the GCloud CLI to the Image
+
+One more cloud service provider to go–Google Cloud Platform.
+
+The nice thing about the Google documentation is it provides you with the Docker run command!
+
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+
+Let’s use a text editor this time to modify the Docker file. It should look like this when done:
+
+FROM nginx
+
+# AWS CLI
+RUN  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+Time to test it again:
+
+docker build -t hitc-tools .
+docker run --rm -it hitc-tools bash
+
+
+When we get the container’s prompt, run gcloud --version and the results should look like:
+
+root@93d257522d99:/# gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+
+
+It works, so exit from the container.
+
+Create a Non-privileged User for the Image
+
+The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our
+Dockerfile. Using a text editor, add the following lines right below the FROM ubuntu line at the top of the file:
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+
+What do these commands do? First, we are adding a new user called hitc complete with a home directory. Next we install sudo so that the sudoers file is created as part of the install process. lastly, we need to add a line to the sudoers file to prevent the prompting for a password when sudo is run from the hitc user context.
+
+The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the official documentation
+
+Make sure that your Docker file looks like:
+
+FROM ubuntu
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+# AWS CLI
+RUN sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the hitc user context, all of the intermediate containers will need to be rebuilt.:
+
+docker build -t hitc-tools .
+
+
+
+Bonk! We have an error:
+
+---&gt; Running in 76d84d16d559
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Reading package lists...
+E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)
+E: Unable to lock directory /var/lib/apt/lists/
+The command '/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' returned a non-zero code: 100
+
+
+Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some sudo commands.
+
+Change the AWS RUN instruction as follows:
+
+RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+
+And, let’s test it again:
+
+docker build -t hitc-tools .
+
+
+
+Another error:
+
+---&gt; Running in eac768a8ebaf
+deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main
+tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied
+The command '/bin/sh -c echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI' returned a non-zero code: 1
+
+
+It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows:
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y
+
+
+Now it should build without an error:
+
+docker build -t hitc-tools .
+
+
+
+Awesome! Now we can run it and put it thru it’s paces:
+
+ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+hitc@9e703ed5f1de:~$ aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+hitc@9e703ed5f1de:~$ az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/home/hitc/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+hitc@9e703ed5f1de:~$ gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+hitc@9e703ed5f1de:~$
+
+
+Everything looks good!
+
+Wrap up
+
+Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 14 - Make a Container of Cloud Tools">
+<meta name="twitter:description" content="
+
+Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Make a Container of Cloud Tools”
+
+This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future Head in the Clouds Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP.
+
+Setup
+
+For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to Episode 13 for instructions on installing Docker.
+
+Create the Initial “HitC Tools” Image with just the AWS CLI
+
+A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be ubuntu
+
+echo 'FROM ubuntu' &gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+
+Next, we need to look up the commands to install the AWS CLI to Ubuntu.
+
+According to https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html The commands are:
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+
+But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode:
+
+docker run --name dev -it ubuntu
+
+
+and then paste in the first command:
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+
+We see that we get an error:
+
+root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+bash: curl: command not found
+
+
+
+As suspected, curl is not installed yet. Let’s install it:
+
+apt update
+apt install -y curl
+
+
+
+Ok, try the curl command again:
+
+root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 42.4M  100 42.4M    0     0  50.3M      0 --:--:-- --:--:-- --:--:-- 50.3M
+
+
+Good, try the next command:
+
+unzip awscliv2.zip
+
+
+It is not installed either, so install it:
+
+apt install -y unzip
+
+
+
+Now we can unzip the file that we downloaded to our container:
+
+unzip awscliv2.zip
+
+
+
+At this point, we can try to install the AWS CLI:
+
+sudo ./aws/install
+
+We get:
+
+root@2883310a829c:/# sudo ./aws/install
+bash: sudo: command not found
+
+
+Oops, sudo is not installed either. Let’s add it as well:
+
+apt install -y sudo
+
+
+
+And now, finally, we can run the AWS CLI installer:
+
+sudo ./aws/install
+
+
+
+And we get:
+
+root@2883310a829c:/# sudo ./aws/install
+You can now run: /usr/local/bin/aws --version
+
+
+To test that the CLI was properly installed, just run:
+
+aws --version
+
+
+And we should get something like:
+
+root@2883310a829c:/# aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+
+
+All right, hence we conclude that the full set of commands to install the AWS CLI are:
+
+apt update
+apt install -y curl unzip sudo
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm awscliv2.zip
+
+
+For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using sudo however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with sudo installed.
+
+Type exit to exit the interactive container.
+
+In a Dockerfile, it is considered a best practice to separate related commands with &amp;&amp; which means execute the following command only if the previous command ran successfully (returned an exit code of zero).
+
+Let’s add this to our Dockerfile as a RUN command:
+
+echo "# AWS CLI" &gt;&gt; Dockerfile
+echo 'RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' &gt;&gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+
+
+Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See https://docs.docker.com/engine/reference/builder/#run to learn more.
+
+Now let’s test our Dockerfile. First by building our image:
+
+docker build -t hitc-tools .
+
+
+and then by running it:
+
+docker run --rm  -it hitc-tools bash
+
+
+Now we should be able to run aws --version and see a result similar to:
+
+root@5fe7341eff0d:/# aws --version
+aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off
+
+
+As before, type exit to terminate the container.
+
+Add the Azure CLI to the Image
+
+Now to repeat the process for the Azure CLI:
+
+From the Azure documentation, we can see that the commands that we need to use are:
+
+sudo apt-get update
+sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt-get update
+sudo apt-get install azure-cli
+
+
+For the sake of space and consistency, let’s use the short form of apt versus apt-get and add the -y switch to all of the install commands to make them non-interactive:
+
+sudo apt update
+sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt update
+sudo apt install -y azure-cli
+
+
+Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using &amp;&amp;:
+
+echo "# Azure CLI" &gt;&gt; Dockerfile
+
+echo 'RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli' &gt;&gt; Dockerfile
+
+echo " " &gt;&gt; Dockerfile
+
+
+
+Now, test our latest Dockerfile:
+
+docker build -t hitc-tools .
+docker run --rm  -it hitc-tools bash
+
+
+Once we get the prompt from the container, we can run az --version and the output will look something like:
+
+ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+root@963a51baed25:/# az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/root/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+
+
+
+Very good. Exit from the container.
+
+Add the GCloud CLI to the Image
+
+One more cloud service provider to go–Google Cloud Platform.
+
+The nice thing about the Google documentation is it provides you with the Docker run command!
+
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+
+Let’s use a text editor this time to modify the Docker file. It should look like this when done:
+
+FROM nginx
+
+# AWS CLI
+RUN  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+Time to test it again:
+
+docker build -t hitc-tools .
+docker run --rm -it hitc-tools bash
+
+
+When we get the container’s prompt, run gcloud --version and the results should look like:
+
+root@93d257522d99:/# gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+
+
+It works, so exit from the container.
+
+Create a Non-privileged User for the Image
+
+The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our
+Dockerfile. Using a text editor, add the following lines right below the FROM ubuntu line at the top of the file:
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+
+What do these commands do? First, we are adding a new user called hitc complete with a home directory. Next we install sudo so that the sudoers file is created as part of the install process. lastly, we need to add a line to the sudoers file to prevent the prompting for a password when sudo is run from the hitc user context.
+
+The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the official documentation
+
+Make sure that your Docker file looks like:
+
+FROM ubuntu
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+# AWS CLI
+RUN sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the hitc user context, all of the intermediate containers will need to be rebuilt.:
+
+docker build -t hitc-tools .
+
+
+
+Bonk! We have an error:
+
+---&gt; Running in 76d84d16d559
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Reading package lists...
+E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)
+E: Unable to lock directory /var/lib/apt/lists/
+The command '/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' returned a non-zero code: 100
+
+
+Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some sudo commands.
+
+Change the AWS RUN instruction as follows:
+
+RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+
+And, let’s test it again:
+
+docker build -t hitc-tools .
+
+
+
+Another error:
+
+---&gt; Running in eac768a8ebaf
+deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main
+tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied
+The command '/bin/sh -c echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI' returned a non-zero code: 1
+
+
+It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows:
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y
+
+
+Now it should build without an error:
+
+docker build -t hitc-tools .
+
+
+
+Awesome! Now we can run it and put it thru it’s paces:
+
+ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+hitc@9e703ed5f1de:~$ aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+hitc@9e703ed5f1de:~$ az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/home/hitc/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+hitc@9e703ed5f1de:~$ gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+hitc@9e703ed5f1de:~$
+
+
+Everything looks good!
+
+Wrap up
+
+Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 14 - Make a Container of Cloud Tools">
+<meta property="og:description" content="
+
+Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Make a Container of Cloud Tools”
+
+This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future Head in the Clouds Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP.
+
+Setup
+
+For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to Episode 13 for instructions on installing Docker.
+
+Create the Initial “HitC Tools” Image with just the AWS CLI
+
+A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be ubuntu
+
+echo 'FROM ubuntu' &gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+
+Next, we need to look up the commands to install the AWS CLI to Ubuntu.
+
+According to https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html The commands are:
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+
+But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode:
+
+docker run --name dev -it ubuntu
+
+
+and then paste in the first command:
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+
+We see that we get an error:
+
+root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+bash: curl: command not found
+
+
+
+As suspected, curl is not installed yet. Let’s install it:
+
+apt update
+apt install -y curl
+
+
+
+Ok, try the curl command again:
+
+root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 42.4M  100 42.4M    0     0  50.3M      0 --:--:-- --:--:-- --:--:-- 50.3M
+
+
+Good, try the next command:
+
+unzip awscliv2.zip
+
+
+It is not installed either, so install it:
+
+apt install -y unzip
+
+
+
+Now we can unzip the file that we downloaded to our container:
+
+unzip awscliv2.zip
+
+
+
+At this point, we can try to install the AWS CLI:
+
+sudo ./aws/install
+
+We get:
+
+root@2883310a829c:/# sudo ./aws/install
+bash: sudo: command not found
+
+
+Oops, sudo is not installed either. Let’s add it as well:
+
+apt install -y sudo
+
+
+
+And now, finally, we can run the AWS CLI installer:
+
+sudo ./aws/install
+
+
+
+And we get:
+
+root@2883310a829c:/# sudo ./aws/install
+You can now run: /usr/local/bin/aws --version
+
+
+To test that the CLI was properly installed, just run:
+
+aws --version
+
+
+And we should get something like:
+
+root@2883310a829c:/# aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+
+
+All right, hence we conclude that the full set of commands to install the AWS CLI are:
+
+apt update
+apt install -y curl unzip sudo
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm awscliv2.zip
+
+
+For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using sudo however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with sudo installed.
+
+Type exit to exit the interactive container.
+
+In a Dockerfile, it is considered a best practice to separate related commands with &amp;&amp; which means execute the following command only if the previous command ran successfully (returned an exit code of zero).
+
+Let’s add this to our Dockerfile as a RUN command:
+
+echo "# AWS CLI" &gt;&gt; Dockerfile
+echo 'RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' &gt;&gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+
+
+Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See https://docs.docker.com/engine/reference/builder/#run to learn more.
+
+Now let’s test our Dockerfile. First by building our image:
+
+docker build -t hitc-tools .
+
+
+and then by running it:
+
+docker run --rm  -it hitc-tools bash
+
+
+Now we should be able to run aws --version and see a result similar to:
+
+root@5fe7341eff0d:/# aws --version
+aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off
+
+
+As before, type exit to terminate the container.
+
+Add the Azure CLI to the Image
+
+Now to repeat the process for the Azure CLI:
+
+From the Azure documentation, we can see that the commands that we need to use are:
+
+sudo apt-get update
+sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt-get update
+sudo apt-get install azure-cli
+
+
+For the sake of space and consistency, let’s use the short form of apt versus apt-get and add the -y switch to all of the install commands to make them non-interactive:
+
+sudo apt update
+sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt update
+sudo apt install -y azure-cli
+
+
+Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using &amp;&amp;:
+
+echo "# Azure CLI" &gt;&gt; Dockerfile
+
+echo 'RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli' &gt;&gt; Dockerfile
+
+echo " " &gt;&gt; Dockerfile
+
+
+
+Now, test our latest Dockerfile:
+
+docker build -t hitc-tools .
+docker run --rm  -it hitc-tools bash
+
+
+Once we get the prompt from the container, we can run az --version and the output will look something like:
+
+ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+root@963a51baed25:/# az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/root/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+
+
+
+Very good. Exit from the container.
+
+Add the GCloud CLI to the Image
+
+One more cloud service provider to go–Google Cloud Platform.
+
+The nice thing about the Google documentation is it provides you with the Docker run command!
+
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+
+Let’s use a text editor this time to modify the Docker file. It should look like this when done:
+
+FROM nginx
+
+# AWS CLI
+RUN  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+Time to test it again:
+
+docker build -t hitc-tools .
+docker run --rm -it hitc-tools bash
+
+
+When we get the container’s prompt, run gcloud --version and the results should look like:
+
+root@93d257522d99:/# gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+
+
+It works, so exit from the container.
+
+Create a Non-privileged User for the Image
+
+The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our
+Dockerfile. Using a text editor, add the following lines right below the FROM ubuntu line at the top of the file:
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+
+What do these commands do? First, we are adding a new user called hitc complete with a home directory. Next we install sudo so that the sudoers file is created as part of the install process. lastly, we need to add a line to the sudoers file to prevent the prompting for a password when sudo is run from the hitc user context.
+
+The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the official documentation
+
+Make sure that your Docker file looks like:
+
+FROM ubuntu
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+# AWS CLI
+RUN sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+
+Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the hitc user context, all of the intermediate containers will need to be rebuilt.:
+
+docker build -t hitc-tools .
+
+
+
+Bonk! We have an error:
+
+---&gt; Running in 76d84d16d559
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Reading package lists...
+E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)
+E: Unable to lock directory /var/lib/apt/lists/
+The command '/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' returned a non-zero code: 100
+
+
+Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some sudo commands.
+
+Change the AWS RUN instruction as follows:
+
+RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+
+And, let’s test it again:
+
+docker build -t hitc-tools .
+
+
+
+Another error:
+
+---&gt; Running in eac768a8ebaf
+deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main
+tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied
+The command '/bin/sh -c echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI' returned a non-zero code: 1
+
+
+It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows:
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y
+
+
+Now it should build without an error:
+
+docker build -t hitc-tools .
+
+
+
+Awesome! Now we can run it and put it thru it’s paces:
+
+ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+hitc@9e703ed5f1de:~$ aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+hitc@9e703ed5f1de:~$ az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/home/hitc/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+hitc@9e703ed5f1de:~$ gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+hitc@9e703ed5f1de:~$
+
+
+Everything looks good!
+
+Wrap up
+
+Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta property="og:url" content="/episodes/episode14/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode14/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 14 - Make a Container of Cloud Tools | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 14 - Make a Container of Cloud Tools" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Make a Container of Cloud Tools” This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future Head in the Clouds Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP. Setup For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to Episode 13 for instructions on installing Docker. Create the Initial “HitC Tools” Image with just the AWS CLI A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be ubuntu echo &#39;FROM ubuntu&#39; &gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Next, we need to look up the commands to install the AWS CLI to Ubuntu. According to https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html The commands are: curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; unzip awscliv2.zip sudo ./aws/install But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode: docker run --name dev -it ubuntu and then paste in the first command: curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; We see that we get an error: root@b0dabf129639:/# curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; bash: curl: command not found As suspected, curl is not installed yet. Let’s install it: apt update apt install -y curl Ok, try the curl command again: root@b0dabf129639:/# curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; % Total % Received % Xferd Average Speed Time Time Time Current Dload Upload Total Spent Left Speed 100 42.4M 100 42.4M 0 0 50.3M 0 --:--:-- --:--:-- --:--:-- 50.3M Good, try the next command: unzip awscliv2.zip It is not installed either, so install it: apt install -y unzip Now we can unzip the file that we downloaded to our container: unzip awscliv2.zip At this point, we can try to install the AWS CLI: sudo ./aws/install We get: root@2883310a829c:/# sudo ./aws/install bash: sudo: command not found Oops, sudo is not installed either. Let’s add it as well: apt install -y sudo And now, finally, we can run the AWS CLI installer: sudo ./aws/install And we get: root@2883310a829c:/# sudo ./aws/install You can now run: /usr/local/bin/aws --version To test that the CLI was properly installed, just run: aws --version And we should get something like: root@2883310a829c:/# aws --version aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off All right, hence we conclude that the full set of commands to install the AWS CLI are: apt update apt install -y curl unzip sudo curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; unzip awscliv2.zip sudo ./aws/install rm awscliv2.zip For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using sudo however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with sudo installed. Type exit to exit the interactive container. In a Dockerfile, it is considered a best practice to separate related commands with &amp;&amp; which means execute the following command only if the previous command ran successfully (returned an exit code of zero). Let’s add this to our Dockerfile as a RUN command: echo &quot;# AWS CLI&quot; &gt;&gt; Dockerfile echo &#39;RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip&#39; &gt;&gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See https://docs.docker.com/engine/reference/builder/#run to learn more. Now let’s test our Dockerfile. First by building our image: docker build -t hitc-tools . and then by running it: docker run --rm -it hitc-tools bash Now we should be able to run aws --version and see a result similar to: root@5fe7341eff0d:/# aws --version aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off As before, type exit to terminate the container. Add the Azure CLI to the Image Now to repeat the process for the Azure CLI: From the Azure documentation, we can see that the commands that we need to use are: sudo apt-get update sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null AZ_REPO=$(lsb_release -cs) echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list sudo apt-get update sudo apt-get install azure-cli For the sake of space and consistency, let’s use the short form of apt versus apt-get and add the -y switch to all of the install commands to make them non-interactive: sudo apt update sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null AZ_REPO=$(lsb_release -cs) echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list sudo apt update sudo apt install -y azure-cli Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using &amp;&amp;: echo &quot;# Azure CLI&quot; &gt;&gt; Dockerfile echo &#39;RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli&#39; &gt;&gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Now, test our latest Dockerfile: docker build -t hitc-tools . docker run --rm -it hitc-tools bash Once we get the prompt from the container, we can run az --version and the output will look something like: ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash root@963a51baed25:/# az --version azure-cli 2.29.0 core 2.29.0 telemetry 1.0.6 Python location &#39;/opt/az/bin/python3&#39; Extensions directory &#39;/root/.azure/cliextensions&#39; Python (Linux) 3.6.10 (default, Oct 8 2021, 09:26:22) [GCC 9.3.0] Legal docs and information: aka.ms/AzureCliLegal Your CLI is up-to-date. Please let us know how we are doing: https://aka.ms/azureclihats and let us know if you&#39;re interested in trying out our newest features: https://aka.ms/CLIUXstudy Very good. Exit from the container. Add the GCloud CLI to the Image One more cloud service provider to go–Google Cloud Platform. The nice thing about the Google documentation is it provides you with the Docker run command! RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Let’s use a text editor this time to modify the Docker file. It should look like this when done: FROM nginx # AWS CLI RUN curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip # Azure CLI RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Time to test it again: docker build -t hitc-tools . docker run --rm -it hitc-tools bash When we get the container’s prompt, run gcloud --version and the results should look like: root@93d257522d99:/# gcloud --version Google Cloud SDK 360.0.0 alpha 2021.10.04 beta 2021.10.04 bq 2.0.71 core 2021.10.04 gsutil 5.3 It works, so exit from the container. Create a Non-privileged User for the Image The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our Dockerfile. Using a text editor, add the following lines right below the FROM ubuntu line at the top of the file: # Add the Non-privileged user RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo &quot;hitc ALL=(ALL) NOPASSWD: ALL&quot; &gt;&gt; /etc/sudoers USER hitc WORKDIR /home/hitc What do these commands do? First, we are adding a new user called hitc complete with a home directory. Next we install sudo so that the sudoers file is created as part of the install process. lastly, we need to add a line to the sudoers file to prevent the prompting for a password when sudo is run from the hitc user context. The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the official documentation Make sure that your Docker file looks like: FROM ubuntu # Add the Non-privileged user RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo &quot;hitc ALL=(ALL) NOPASSWD: ALL&quot; &gt;&gt; /etc/sudoers USER hitc WORKDIR /home/hitc # AWS CLI RUN sudo apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip # Azure CLI RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the hitc user context, all of the intermediate containers will need to be rebuilt.: docker build -t hitc-tools . Bonk! We have an error: ---&gt; Running in 76d84d16d559 WARNING: apt does not have a stable CLI interface. Use with caution in scripts. Reading package lists... E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied) E: Unable to lock directory /var/lib/apt/lists/ The command &#39;/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip&#39; returned a non-zero code: 100 Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some sudo commands. Change the AWS RUN instruction as follows: RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip And, let’s test it again: docker build -t hitc-tools . Another error: ---&gt; Running in eac768a8ebaf deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied The command &#39;/bin/sh -c echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI&#39; returned a non-zero code: 1 It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows: # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y Now it should build without an error: docker build -t hitc-tools . Awesome! Now we can run it and put it thru it’s paces: ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash hitc@9e703ed5f1de:~$ aws --version aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off hitc@9e703ed5f1de:~$ az --version azure-cli 2.29.0 core 2.29.0 telemetry 1.0.6 Python location &#39;/opt/az/bin/python3&#39; Extensions directory &#39;/home/hitc/.azure/cliextensions&#39; Python (Linux) 3.6.10 (default, Oct 8 2021, 09:26:22) [GCC 9.3.0] Legal docs and information: aka.ms/AzureCliLegal Your CLI is up-to-date. Please let us know how we are doing: https://aka.ms/azureclihats and let us know if you&#39;re interested in trying out our newest features: https://aka.ms/CLIUXstudy hitc@9e703ed5f1de:~$ gcloud --version Google Cloud SDK 360.0.0 alpha 2021.10.04 beta 2021.10.04 bq 2.0.71 core 2021.10.04 gsutil 5.3 hitc@9e703ed5f1de:~$ Everything looks good! Wrap up Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<meta property="og:description" content="Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Make a Container of Cloud Tools” This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future Head in the Clouds Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP. Setup For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to Episode 13 for instructions on installing Docker. Create the Initial “HitC Tools” Image with just the AWS CLI A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be ubuntu echo &#39;FROM ubuntu&#39; &gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Next, we need to look up the commands to install the AWS CLI to Ubuntu. According to https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html The commands are: curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; unzip awscliv2.zip sudo ./aws/install But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode: docker run --name dev -it ubuntu and then paste in the first command: curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; We see that we get an error: root@b0dabf129639:/# curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; bash: curl: command not found As suspected, curl is not installed yet. Let’s install it: apt update apt install -y curl Ok, try the curl command again: root@b0dabf129639:/# curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; % Total % Received % Xferd Average Speed Time Time Time Current Dload Upload Total Spent Left Speed 100 42.4M 100 42.4M 0 0 50.3M 0 --:--:-- --:--:-- --:--:-- 50.3M Good, try the next command: unzip awscliv2.zip It is not installed either, so install it: apt install -y unzip Now we can unzip the file that we downloaded to our container: unzip awscliv2.zip At this point, we can try to install the AWS CLI: sudo ./aws/install We get: root@2883310a829c:/# sudo ./aws/install bash: sudo: command not found Oops, sudo is not installed either. Let’s add it as well: apt install -y sudo And now, finally, we can run the AWS CLI installer: sudo ./aws/install And we get: root@2883310a829c:/# sudo ./aws/install You can now run: /usr/local/bin/aws --version To test that the CLI was properly installed, just run: aws --version And we should get something like: root@2883310a829c:/# aws --version aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off All right, hence we conclude that the full set of commands to install the AWS CLI are: apt update apt install -y curl unzip sudo curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; unzip awscliv2.zip sudo ./aws/install rm awscliv2.zip For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using sudo however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with sudo installed. Type exit to exit the interactive container. In a Dockerfile, it is considered a best practice to separate related commands with &amp;&amp; which means execute the following command only if the previous command ran successfully (returned an exit code of zero). Let’s add this to our Dockerfile as a RUN command: echo &quot;# AWS CLI&quot; &gt;&gt; Dockerfile echo &#39;RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip&#39; &gt;&gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See https://docs.docker.com/engine/reference/builder/#run to learn more. Now let’s test our Dockerfile. First by building our image: docker build -t hitc-tools . and then by running it: docker run --rm -it hitc-tools bash Now we should be able to run aws --version and see a result similar to: root@5fe7341eff0d:/# aws --version aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off As before, type exit to terminate the container. Add the Azure CLI to the Image Now to repeat the process for the Azure CLI: From the Azure documentation, we can see that the commands that we need to use are: sudo apt-get update sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null AZ_REPO=$(lsb_release -cs) echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list sudo apt-get update sudo apt-get install azure-cli For the sake of space and consistency, let’s use the short form of apt versus apt-get and add the -y switch to all of the install commands to make them non-interactive: sudo apt update sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null AZ_REPO=$(lsb_release -cs) echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list sudo apt update sudo apt install -y azure-cli Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using &amp;&amp;: echo &quot;# Azure CLI&quot; &gt;&gt; Dockerfile echo &#39;RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli&#39; &gt;&gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Now, test our latest Dockerfile: docker build -t hitc-tools . docker run --rm -it hitc-tools bash Once we get the prompt from the container, we can run az --version and the output will look something like: ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash root@963a51baed25:/# az --version azure-cli 2.29.0 core 2.29.0 telemetry 1.0.6 Python location &#39;/opt/az/bin/python3&#39; Extensions directory &#39;/root/.azure/cliextensions&#39; Python (Linux) 3.6.10 (default, Oct 8 2021, 09:26:22) [GCC 9.3.0] Legal docs and information: aka.ms/AzureCliLegal Your CLI is up-to-date. Please let us know how we are doing: https://aka.ms/azureclihats and let us know if you&#39;re interested in trying out our newest features: https://aka.ms/CLIUXstudy Very good. Exit from the container. Add the GCloud CLI to the Image One more cloud service provider to go–Google Cloud Platform. The nice thing about the Google documentation is it provides you with the Docker run command! RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Let’s use a text editor this time to modify the Docker file. It should look like this when done: FROM nginx # AWS CLI RUN curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip # Azure CLI RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Time to test it again: docker build -t hitc-tools . docker run --rm -it hitc-tools bash When we get the container’s prompt, run gcloud --version and the results should look like: root@93d257522d99:/# gcloud --version Google Cloud SDK 360.0.0 alpha 2021.10.04 beta 2021.10.04 bq 2.0.71 core 2021.10.04 gsutil 5.3 It works, so exit from the container. Create a Non-privileged User for the Image The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our Dockerfile. Using a text editor, add the following lines right below the FROM ubuntu line at the top of the file: # Add the Non-privileged user RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo &quot;hitc ALL=(ALL) NOPASSWD: ALL&quot; &gt;&gt; /etc/sudoers USER hitc WORKDIR /home/hitc What do these commands do? First, we are adding a new user called hitc complete with a home directory. Next we install sudo so that the sudoers file is created as part of the install process. lastly, we need to add a line to the sudoers file to prevent the prompting for a password when sudo is run from the hitc user context. The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the official documentation Make sure that your Docker file looks like: FROM ubuntu # Add the Non-privileged user RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo &quot;hitc ALL=(ALL) NOPASSWD: ALL&quot; &gt;&gt; /etc/sudoers USER hitc WORKDIR /home/hitc # AWS CLI RUN sudo apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip # Azure CLI RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the hitc user context, all of the intermediate containers will need to be rebuilt.: docker build -t hitc-tools . Bonk! We have an error: ---&gt; Running in 76d84d16d559 WARNING: apt does not have a stable CLI interface. Use with caution in scripts. Reading package lists... E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied) E: Unable to lock directory /var/lib/apt/lists/ The command &#39;/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip&#39; returned a non-zero code: 100 Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some sudo commands. Change the AWS RUN instruction as follows: RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip And, let’s test it again: docker build -t hitc-tools . Another error: ---&gt; Running in eac768a8ebaf deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied The command &#39;/bin/sh -c echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI&#39; returned a non-zero code: 1 It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows: # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y Now it should build without an error: docker build -t hitc-tools . Awesome! Now we can run it and put it thru it’s paces: ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash hitc@9e703ed5f1de:~$ aws --version aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off hitc@9e703ed5f1de:~$ az --version azure-cli 2.29.0 core 2.29.0 telemetry 1.0.6 Python location &#39;/opt/az/bin/python3&#39; Extensions directory &#39;/home/hitc/.azure/cliextensions&#39; Python (Linux) 3.6.10 (default, Oct 8 2021, 09:26:22) [GCC 9.3.0] Legal docs and information: aka.ms/AzureCliLegal Your CLI is up-to-date. Please let us know how we are doing: https://aka.ms/azureclihats and let us know if you&#39;re interested in trying out our newest features: https://aka.ms/CLIUXstudy hitc@9e703ed5f1de:~$ gcloud --version Google Cloud SDK 360.0.0 alpha 2021.10.04 beta 2021.10.04 bq 2.0.71 core 2021.10.04 gsutil 5.3 hitc@9e703ed5f1de:~$ Everything looks good! Wrap up Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode14/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode14/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 14 - Make a Container of Cloud Tools" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:39-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Make a Container of Cloud Tools” This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future Head in the Clouds Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP. Setup For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to Episode 13 for instructions on installing Docker. Create the Initial “HitC Tools” Image with just the AWS CLI A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be ubuntu echo &#39;FROM ubuntu&#39; &gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Next, we need to look up the commands to install the AWS CLI to Ubuntu. According to https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html The commands are: curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; unzip awscliv2.zip sudo ./aws/install But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode: docker run --name dev -it ubuntu and then paste in the first command: curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; We see that we get an error: root@b0dabf129639:/# curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; bash: curl: command not found As suspected, curl is not installed yet. Let’s install it: apt update apt install -y curl Ok, try the curl command again: root@b0dabf129639:/# curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; % Total % Received % Xferd Average Speed Time Time Time Current Dload Upload Total Spent Left Speed 100 42.4M 100 42.4M 0 0 50.3M 0 --:--:-- --:--:-- --:--:-- 50.3M Good, try the next command: unzip awscliv2.zip It is not installed either, so install it: apt install -y unzip Now we can unzip the file that we downloaded to our container: unzip awscliv2.zip At this point, we can try to install the AWS CLI: sudo ./aws/install We get: root@2883310a829c:/# sudo ./aws/install bash: sudo: command not found Oops, sudo is not installed either. Let’s add it as well: apt install -y sudo And now, finally, we can run the AWS CLI installer: sudo ./aws/install And we get: root@2883310a829c:/# sudo ./aws/install You can now run: /usr/local/bin/aws --version To test that the CLI was properly installed, just run: aws --version And we should get something like: root@2883310a829c:/# aws --version aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off All right, hence we conclude that the full set of commands to install the AWS CLI are: apt update apt install -y curl unzip sudo curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; unzip awscliv2.zip sudo ./aws/install rm awscliv2.zip For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using sudo however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with sudo installed. Type exit to exit the interactive container. In a Dockerfile, it is considered a best practice to separate related commands with &amp;&amp; which means execute the following command only if the previous command ran successfully (returned an exit code of zero). Let’s add this to our Dockerfile as a RUN command: echo &quot;# AWS CLI&quot; &gt;&gt; Dockerfile echo &#39;RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip&#39; &gt;&gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See https://docs.docker.com/engine/reference/builder/#run to learn more. Now let’s test our Dockerfile. First by building our image: docker build -t hitc-tools . and then by running it: docker run --rm -it hitc-tools bash Now we should be able to run aws --version and see a result similar to: root@5fe7341eff0d:/# aws --version aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off As before, type exit to terminate the container. Add the Azure CLI to the Image Now to repeat the process for the Azure CLI: From the Azure documentation, we can see that the commands that we need to use are: sudo apt-get update sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null AZ_REPO=$(lsb_release -cs) echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list sudo apt-get update sudo apt-get install azure-cli For the sake of space and consistency, let’s use the short form of apt versus apt-get and add the -y switch to all of the install commands to make them non-interactive: sudo apt update sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null AZ_REPO=$(lsb_release -cs) echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list sudo apt update sudo apt install -y azure-cli Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using &amp;&amp;: echo &quot;# Azure CLI&quot; &gt;&gt; Dockerfile echo &#39;RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli&#39; &gt;&gt; Dockerfile echo &quot; &quot; &gt;&gt; Dockerfile Now, test our latest Dockerfile: docker build -t hitc-tools . docker run --rm -it hitc-tools bash Once we get the prompt from the container, we can run az --version and the output will look something like: ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash root@963a51baed25:/# az --version azure-cli 2.29.0 core 2.29.0 telemetry 1.0.6 Python location &#39;/opt/az/bin/python3&#39; Extensions directory &#39;/root/.azure/cliextensions&#39; Python (Linux) 3.6.10 (default, Oct 8 2021, 09:26:22) [GCC 9.3.0] Legal docs and information: aka.ms/AzureCliLegal Your CLI is up-to-date. Please let us know how we are doing: https://aka.ms/azureclihats and let us know if you&#39;re interested in trying out our newest features: https://aka.ms/CLIUXstudy Very good. Exit from the container. Add the GCloud CLI to the Image One more cloud service provider to go–Google Cloud Platform. The nice thing about the Google documentation is it provides you with the Docker run command! RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Let’s use a text editor this time to modify the Docker file. It should look like this when done: FROM nginx # AWS CLI RUN curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip # Azure CLI RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Time to test it again: docker build -t hitc-tools . docker run --rm -it hitc-tools bash When we get the container’s prompt, run gcloud --version and the results should look like: root@93d257522d99:/# gcloud --version Google Cloud SDK 360.0.0 alpha 2021.10.04 beta 2021.10.04 bq 2.0.71 core 2021.10.04 gsutil 5.3 It works, so exit from the container. Create a Non-privileged User for the Image The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our Dockerfile. Using a text editor, add the following lines right below the FROM ubuntu line at the top of the file: # Add the Non-privileged user RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo &quot;hitc ALL=(ALL) NOPASSWD: ALL&quot; &gt;&gt; /etc/sudoers USER hitc WORKDIR /home/hitc What do these commands do? First, we are adding a new user called hitc complete with a home directory. Next we install sudo so that the sudoers file is created as part of the install process. lastly, we need to add a line to the sudoers file to prevent the prompting for a password when sudo is run from the hitc user context. The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the official documentation Make sure that your Docker file looks like: FROM ubuntu # Add the Non-privileged user RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo &quot;hitc ALL=(ALL) NOPASSWD: ALL&quot; &gt;&gt; /etc/sudoers USER hitc WORKDIR /home/hitc # AWS CLI RUN sudo apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip # Azure CLI RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo &quot;deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main&quot; | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the hitc user context, all of the intermediate containers will need to be rebuilt.: docker build -t hitc-tools . Bonk! We have an error: ---&gt; Running in 76d84d16d559 WARNING: apt does not have a stable CLI interface. Use with caution in scripts. Reading package lists... E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied) E: Unable to lock directory /var/lib/apt/lists/ The command &#39;/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip&#39; returned a non-zero code: 100 Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some sudo commands. Change the AWS RUN instruction as follows: RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip&quot; -o &quot;awscliv2.zip&quot; &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip And, let’s test it again: docker build -t hitc-tools . Another error: ---&gt; Running in eac768a8ebaf deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied The command &#39;/bin/sh -c echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI&#39; returned a non-zero code: 1 It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows: # GCloud CLI RUN echo &quot;deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main&quot; | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y Now it should build without an error: docker build -t hitc-tools . Awesome! Now we can run it and put it thru it’s paces: ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash hitc@9e703ed5f1de:~$ aws --version aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off hitc@9e703ed5f1de:~$ az --version azure-cli 2.29.0 core 2.29.0 telemetry 1.0.6 Python location &#39;/opt/az/bin/python3&#39; Extensions directory &#39;/home/hitc/.azure/cliextensions&#39; Python (Linux) 3.6.10 (default, Oct 8 2021, 09:26:22) [GCC 9.3.0] Legal docs and information: aka.ms/AzureCliLegal Your CLI is up-to-date. Please let us know how we are doing: https://aka.ms/azureclihats and let us know if you&#39;re interested in trying out our newest features: https://aka.ms/CLIUXstudy hitc@9e703ed5f1de:~$ gcloud --version Google Cloud SDK 360.0.0 alpha 2021.10.04 beta 2021.10.04 bq 2.0.71 core 2021.10.04 gsutil 5.3 hitc@9e703ed5f1de:~$ Everything looks good! Wrap up Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care.","headline":"Episode 14 - Make a Container of Cloud Tools","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode14/"},"url":"http://localhost:4000/episodes/episode14/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 14 - Make a Container of Cloud Tools</h1>
+    <div class="article-wrap">
+      <div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/pr4Ni483CM0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to Episode 14 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “Make a Container of Cloud Tools”</p>
+
+<p>This Episode builds on Episode 13, “Docker Jumpstart.” Now that we have learned some Docker basics, let’s build a useful image that we can use in future <em>Head in the Clouds</em> Episodes. We will build a container image that has each of the command line interfaces for AWS, Azure, and GCP.</p>
+
+<h1 id="setup">Setup</h1>
+
+<p>For this episode, we will assume that you have Docker community engine installed on an Ubuntu 20.01 machine. Refer to <a href="./episode13">Episode 13</a> for instructions on installing Docker.</p>
+
+<h1 id="create-the-initial-hitc-tools-image-with-just-the-aws-cli">Create the Initial “HitC Tools” Image with just the AWS CLI</h1>
+
+<p>A Docker image is created using a Dockerfile, so to start, add a line to a new Dockerfile to specify that our base image will be <code class="language-plaintext highlighter-rouge">ubuntu</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 'FROM ubuntu' &gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+</code></pre></div></div>
+
+<p>Next, we need to look up the commands to install the AWS CLI to Ubuntu.</p>
+
+<p>According to <a href="https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html">https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-linux.html</a> The commands are:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+</code></pre></div></div>
+
+<p>But let’s test them in a container based on our “ubuntu” image to see if we are missing any dependencies. Spin up the container in interactive mode:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run --name dev -it ubuntu
+</code></pre></div></div>
+
+<p>and then paste in the first command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+</code></pre></div></div>
+
+<p>We see that we get an error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+bash: curl: command not found
+
+</code></pre></div></div>
+
+<p>As suspected, curl is not installed yet. Let’s install it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>apt update
+apt install -y curl
+
+</code></pre></div></div>
+
+<p>Ok, try the curl command again:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@b0dabf129639:/# curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 42.4M  100 42.4M    0     0  50.3M      0 --:--:-- --:--:-- --:--:-- 50.3M
+</code></pre></div></div>
+
+<p>Good, try the next command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>unzip awscliv2.zip
+</code></pre></div></div>
+
+<p>It is not installed either, so install it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>apt install -y unzip
+
+</code></pre></div></div>
+
+<p>Now we can unzip the file that we downloaded to our container:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>unzip awscliv2.zip
+
+</code></pre></div></div>
+
+<p>At this point, we can try to install the AWS CLI:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo ./aws/install
+</code></pre></div></div>
+<p>We get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@2883310a829c:/# sudo ./aws/install
+bash: sudo: command not found
+</code></pre></div></div>
+
+<p>Oops, <code class="language-plaintext highlighter-rouge">sudo</code> is not installed either. Let’s add it as well:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>apt install -y sudo
+
+</code></pre></div></div>
+
+<p>And now, finally, we can run the AWS CLI installer:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo ./aws/install
+
+</code></pre></div></div>
+
+<p>And we get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@2883310a829c:/# sudo ./aws/install
+You can now run: /usr/local/bin/aws --version
+</code></pre></div></div>
+
+<p>To test that the CLI was properly installed, just run:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws --version
+</code></pre></div></div>
+
+<p>And we should get something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@2883310a829c:/# aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+</code></pre></div></div>
+
+<p>All right, hence we conclude that the full set of commands to install the AWS CLI are:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>apt update
+apt install -y curl unzip sudo
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm awscliv2.zip
+</code></pre></div></div>
+
+<p>For good housekeeping, we removed the zip file as it is no longer necessary. Also, since these commands were executed as root, we technically did not need to install the CLI using <code class="language-plaintext highlighter-rouge">sudo</code> however, toward the end of the episode we will be modifying our container so that we can use the CLI tools from a non-privileged user and that will require that we create our image with <code class="language-plaintext highlighter-rouge">sudo</code> installed.</p>
+
+<p>Type <code class="language-plaintext highlighter-rouge">exit</code> to exit the interactive container.</p>
+
+<p>In a Dockerfile, it is considered a best practice to separate related commands with <code class="language-plaintext highlighter-rouge">&amp;&amp;</code> which means <em>execute the following command only if the previous command ran successfully</em> (returned an exit code of zero).</p>
+
+<p>Let’s add this to our Dockerfile as a RUN command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "# AWS CLI" &gt;&gt; Dockerfile
+echo 'RUN apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' &gt;&gt; Dockerfile
+echo " " &gt;&gt; Dockerfile
+
+</code></pre></div></div>
+
+<p>Every RUN command creates a new layer (or intermediate image) and that’s why related commands are grouped into a single RUN command. See <a href="https://docs.docker.com/engine/reference/builder/#run">https://docs.docker.com/engine/reference/builder/#run</a> to learn more.</p>
+
+<p>Now let’s test our Dockerfile. First by building our image:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc-tools .
+</code></pre></div></div>
+
+<p>and then by running it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run --rm  -it hitc-tools bash
+</code></pre></div></div>
+
+<p>Now we should be able to run <code class="language-plaintext highlighter-rouge">aws --version</code> and see a result similar to:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@5fe7341eff0d:/# aws --version
+aws-cli/2.2.43 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.debian.10 prompt/off
+</code></pre></div></div>
+
+<p>As before, type <code class="language-plaintext highlighter-rouge">exit</code> to terminate the container.</p>
+
+<h1 id="add-the-azure-cli-to-the-image">Add the Azure CLI to the Image</h1>
+
+<p>Now to repeat the process for the Azure CLI:</p>
+
+<p>From the <a href="https://docs.microsoft.com/en-us/cli/azure/install-azure-cli-linux?pivots=apt">Azure documentation</a>, we can see that the commands that we need to use are:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt-get update
+sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt-get update
+sudo apt-get install azure-cli
+</code></pre></div></div>
+
+<p>For the sake of space and consistency, let’s use the short form of <code class="language-plaintext highlighter-rouge">apt</code> versus <code class="language-plaintext highlighter-rouge">apt-get</code> and add the <code class="language-plaintext highlighter-rouge">-y</code> switch to all of the install commands to make them non-interactive:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt update
+sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null
+AZ_REPO=$(lsb_release -cs)
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+sudo apt update
+sudo apt install -y azure-cli
+</code></pre></div></div>
+
+<p>Let’s append that to our Dockerfile as a RUN command, separating each of the above commands using <code class="language-plaintext highlighter-rouge">&amp;&amp;</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "# Azure CLI" &gt;&gt; Dockerfile
+
+echo 'RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli' &gt;&gt; Dockerfile
+
+echo " " &gt;&gt; Dockerfile
+
+</code></pre></div></div>
+
+<p>Now, test our latest Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc-tools .
+docker run --rm  -it hitc-tools bash
+</code></pre></div></div>
+
+<p>Once we get the prompt from the container, we can run <code class="language-plaintext highlighter-rouge">az --version</code> and the output will look something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+root@963a51baed25:/# az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/root/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+
+</code></pre></div></div>
+
+<p>Very good. Exit from the container.</p>
+
+<h1 id="add-the-gcloud-cli-to-the-image">Add the GCloud CLI to the Image</h1>
+
+<p>One more cloud service provider to go–Google Cloud Platform.</p>
+
+<p>The nice thing about the <a href="https://cloud.google.com/sdk/docs/install">Google documentation</a> is it provides you with the Docker run command!</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+
+</code></pre></div></div>
+
+<p>Let’s use a text editor this time to modify the Docker file. It should look like this when done:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM nginx
+
+# AWS CLI
+RUN  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+</code></pre></div></div>
+
+<p>Time to test it again:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc-tools .
+docker run --rm -it hitc-tools bash
+</code></pre></div></div>
+
+<p>When we get the container’s prompt, run <code class="language-plaintext highlighter-rouge">gcloud --version</code> and the results should look like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root@93d257522d99:/# gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+</code></pre></div></div>
+
+<p>It works, so exit from the container.</p>
+
+<h1 id="create-a-non-privileged-user-for-the-image">Create a Non-privileged User for the Image</h1>
+
+<p>The cloud command line interfaces are designed to be run as a non-privileged user, so let’s make that change to our
+Dockerfile. Using a text editor, add the following lines right below the <code class="language-plaintext highlighter-rouge">FROM ubuntu</code> line at the top of the file:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+</code></pre></div></div>
+
+<p>What do these commands do? First, we are adding a new user called <strong>hitc</strong> complete with a home directory. Next we install <code class="language-plaintext highlighter-rouge">sudo</code> so that the <strong>sudoers</strong> file is created as part of the install process. lastly, we need to add a line to the <strong>sudoers</strong> file to prevent the prompting for a password when <code class="language-plaintext highlighter-rouge">sudo</code> is run from the <strong>hitc</strong> user context.</p>
+
+<p>The USER instruction tells docker to switch to the “hitc” user for the following steps while the WORKDIR instruction changes the working directory. To learn more about these instructions, see the <a href="https://docs.docker.com/engine/reference/builder/#user">official documentation</a></p>
+
+<p>Make sure that your Docker file looks like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM ubuntu
+
+# Add the Non-privileged user
+RUN useradd -m hitc &amp;&amp; apt update &amp;&amp; apt install -y sudo &amp;&amp; echo "hitc ALL=(ALL) NOPASSWD: ALL" &gt;&gt; /etc/sudoers
+USER hitc
+WORKDIR /home/hitc
+
+# AWS CLI
+RUN sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+
+# Azure CLI
+RUN sudo apt update &amp;&amp; sudo apt install -y ca-certificates curl apt-transport-https lsb-release gnupg &amp;&amp; curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg &gt; /dev/null &amp;&amp; AZ_REPO=$(lsb_release -cs) &amp;&amp; echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list &amp;&amp; sudo apt update &amp;&amp; sudo apt install -y azure-cli
+
+# GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -y
+</code></pre></div></div>
+
+<p>Great, let’s test the build. Note that it will take longer because Docker will use cached layers if it can, but since we are now installing the three CLI’s under the <code class="language-plaintext highlighter-rouge">hitc</code> user context, all of the intermediate containers will need to be rebuilt.:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc-tools .
+
+</code></pre></div></div>
+
+<p>Bonk! We have an error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>---&gt; Running in 76d84d16d559
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Reading package lists...
+E: Could not open lock file /var/lib/apt/lists/lock - open (13: Permission denied)
+E: Unable to lock directory /var/lib/apt/lists/
+The command '/bin/sh -c apt update &amp;&amp; apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip' returned a non-zero code: 100
+</code></pre></div></div>
+
+<p>Upon inspection of the error we can see that it is in the RUN command that installs the AWS CLI and it is a “Permission denied” error. Since it worked before we changed the execution context to the “hitc” user, it is clear that we are missing some <code class="language-plaintext highlighter-rouge">sudo</code> commands.</p>
+
+<p>Change the AWS RUN instruction as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>RUN sudo apt update &amp;&amp; sudo apt install -y curl unzip sudo &amp;&amp; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &amp;&amp; unzip awscliv2.zip &amp;&amp; sudo ./aws/install &amp;&amp; rm awscliv2.zip
+</code></pre></div></div>
+
+<p>And, let’s test it again:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc-tools .
+
+</code></pre></div></div>
+
+<p>Another error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>---&gt; Running in eac768a8ebaf
+deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main
+tee: /etc/apt/sources.list.d/google-cloud-sdk.list: Permission denied
+The command '/bin/sh -c echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; apt-get update -y &amp;&amp; apt-get install google-cloud-sdk -yI' returned a non-zero code: 1
+</code></pre></div></div>
+
+<p>It’s the same type of error as before, but this time in the GCloud RUN instruction. Change the last two lines of the Dockerfile to read as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># GCloud CLI
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &amp;&amp; curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - &amp;&amp; sudo apt update -y &amp;&amp; sudo apt install google-cloud-sdk -y
+</code></pre></div></div>
+
+<p>Now it should build without an error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc-tools .
+
+</code></pre></div></div>
+
+<p>Awesome! Now we can run it and put it thru it’s paces:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker run --rm -it hitc-tools bash
+hitc@9e703ed5f1de:~$ aws --version
+aws-cli/2.2.45 Python/3.8.8 Linux/5.4.0-1045-aws exe/x86_64.ubuntu.20 prompt/off
+hitc@9e703ed5f1de:~$ az --version
+azure-cli                         2.29.0
+
+core                              2.29.0
+telemetry                          1.0.6
+
+Python location '/opt/az/bin/python3'
+Extensions directory '/home/hitc/.azure/cliextensions'
+
+Python (Linux) 3.6.10 (default, Oct  8 2021, 09:26:22)
+[GCC 9.3.0]
+
+Legal docs and information: aka.ms/AzureCliLegal
+
+
+Your CLI is up-to-date.
+
+Please let us know how we are doing: https://aka.ms/azureclihats
+and let us know if you're interested in trying out our newest features: https://aka.ms/CLIUXstudy
+hitc@9e703ed5f1de:~$ gcloud --version
+Google Cloud SDK 360.0.0
+alpha 2021.10.04
+beta 2021.10.04
+bq 2.0.71
+core 2021.10.04
+gsutil 5.3
+hitc@9e703ed5f1de:~$
+</code></pre></div></div>
+
+<p>Everything looks good!</p>
+
+<h2 id="wrap-up">Wrap up</h2>
+
+<p>Well, there you go. We created a Docker image that has each of the command line interfaces for AWS, Azure, and GCP. Along the way, we performed some troubleshooting and configured the image to execute as a non-privileged user. At this point, you should have confidence creating your own custom docker images.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode14/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode14/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode14/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

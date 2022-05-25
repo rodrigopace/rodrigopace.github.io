@@ -1,0 +1,1683 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface &mdash; Head in the Clouds</title>
+<meta name="description" content="1 - Using jq to Get the Results You Need From Any Command Line Interface
+
+
+
+Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform.
+
+In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to  understand what the command does.
+
+However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go.
+
+First off, what is jq? Let’s run the man command
+
+$ man jq  
+
+
+
+
+The man page is a helpful resource, but don’t for get to RTFM. The manual is available at https://stedolan.github.io/jq/manual/
+
+You can also find the instructions to download and install jq from this same website.
+
+First let’s see what version of jq has been installed
+
+$ jq –-version
+
+
+
+
+Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded here. First, lets take a look at it:
+
+$ cat policy.json
+
+
+
+
+jq is designed to take json as input and transform it and write it back out to standard out.
+Example:
+
+$ jq '.' policy.json
+
+
+
+
+But frequently you will see it piped in from another command:
+
+$ cat policy.json | jq '.'
+
+
+or
+
+$ echo '"cloud"'  | jq '.'
+"cloud"
+
+
+Filters
+
+jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual.
+
+So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable.
+
+Taking a look at our policy.json file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version:
+
+$ cat policy.json | jq '.Version'
+"2012-10-17"
+
+
+Now let’s extract the Statement:
+
+$ cat policy.json | jq '.Statement'
+
+
+
+
+The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run:
+
+$ cat policy.json | jq '.Statement[]'
+
+
+
+
+If we want to access the Action element, we can by adding that onto our jq filter, as follows:
+
+$ cat policy.json | jq '.Statement[].Effect'
+
+
+
+
+Note that functionally, that is the same as
+
+$ cat policy.json | jq '.Statement[] | .Effect'
+
+
+
+
+The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that.
+
+If we want to access the Action element, we can by adding that onto our jq filter, as follows:
+
+cat policy.json | jq '.Statement[].Action'
+
+
+
+
+This program returned an array consisting of four items. To get the items from the array, add in the square brackets again:
+
+cat policy.json | jq '.Statement[].Action[]'
+
+
+
+
+Similarly to extract the:
+
+  First element of a List –&gt;  '.[0]'
+  Third Element of a list –&gt; '.[2]'
+  Last Element of a list –&gt; '.[-1]'
+  Next to last element –&gt; '.[-2]'
+  Elements 2 through 3 –&gt; '.[1:3]'
+  All but first element –&gt; .[1:]
+
+
+
+
+Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets.
+
+Commas
+
+Now that we have talked about square brackets, let’s discuss commas.
+
+If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order:
+
+cat policy.json | jq '.Version, .Statement[].Effect'
+
+
+
+
+Math
+jq can also do math:
+
+$ cat policy.json | jq '42'
+42
+$ cat policy.json | jq '42 + 3'
+45
+$ cat policy.json | jq '(3 + 2) * 5'
+25
+$ cat policy.json | jq '3 + (2 * 5)'
+13
+
+
+Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input:
+
+$ echo [1, 2, 3] | jq '.[] * 2'
+2
+4
+6
+
+
+Or to return the result as an array, put the filter in square brackets:
+
+$ echo [1, 2, 3] | jq '[.[] * 2]'
+[
+  2,
+  4,
+  6
+]
+
+
+Cool Tricks with jq
+By the way, you can return the result in the compact format with the “-c” switch:
+
+$ echo [1, 2, 3] | jq -c '[.[] * 2]'
+[2,4,6]
+
+
+Note, that lower case “c” means “compact format”
+
+For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command:
+
+aws ec2 describe-instances &gt; describe-instances.json
+
+
+This file is also available here and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command.
+
+less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds?
+
+Well, you can with the right command line switches:
+
+cat describe-instances.json | jq -C '.' | less -r
+
+
+The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output.
+
+Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids?
+
+$ cat describe-instances.json | jq -C '.' | head
+$ cat describe-instances.json | jq -C '.Reservations[].Instances[].InstanceId'
+
+
+
+
+There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent:
+
+cat describe-instances.json | jq  '..|.InstanceId?'
+
+
+Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set.
+
+We could pipe this into the Linux “sort” and “uniq” commands as follows:
+
+cat describe-instances.json | jq  '..|.InstanceId?' | sort | uniq
+
+
+But let’s do this using jq:
+
+cat describe-instances.json | jq  '..|.InstanceId? | sort'
+
+
+
+
+Oops, we need to make it an array:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort'
+
+
+That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique'
+
+
+
+
+Somewhat better, but we still have a single null in our result. Let’s remove it:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:]'
+
+
+
+
+And if we want to remove the data from the array:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:][]'
+
+
+
+
+Selection Based on the Value of a Key
+
+Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | select(.InstanceId == "i-03494dbc500e8e306")'
+
+
+
+
+Constructing Objects
+
+In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator?
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress'
+
+
+
+
+We can make these into an object using curly brackets and setting a key for each value:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+
+
+
+
+There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example,  the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+
+
+Now, lets put all four of those objects into an array:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+
+
+
+
+Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place.
+
+cat describe-instances.json | jq '[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+
+
+
+
+Much better. Now let’s make the array part of an object with a key called “MySystems.”
+
+cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}'
+
+
+
+
+Very nice. Let’s add in LaunchTime and save that to a file:
+
+cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}' &gt; MySystems.json
+
+
+Take a look:
+
+jq '.' MySystems.json
+
+
+
+
+Cool, now let’s sort this by LaunchTime:
+
+cat MySystems.json | jq '.MySystems | sort_by(.LaunchTime)'
+
+
+
+
+Alternatively, we can group our data by Availability Zone:
+
+cat MySystems.json | jq '.MySystems | group_by(.AZ)'
+
+
+
+
+We can even add in a new key-value pair for all objects in our array:
+
+cat MySystems.json | jq '.MySystems[].Region = "Northern Virginia"'
+
+
+
+
+We can even use jq to modify values of a JSON object.
+
+For example, if we have a trust policy (available here):
+
+jq '.' trust_policy.json
+
+
+
+
+And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows:
+
+cat trust_policy.json | jq '.Statement[0].Sid |= . + "99"'
+
+
+
+
+Note that when we are working on strings the “+” performs concatenation.
+
+We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny:
+
+cat trust_policy.json | jq '.Statement[0].Effect = "Deny"'
+
+
+
+
+Wrap Up
+
+Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to head-in-the-clouds-security@googlegroups.com.
+
+Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface">
+<meta name="twitter:description" content="1 - Using jq to Get the Results You Need From Any Command Line Interface
+
+
+
+Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform.
+
+In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to  understand what the command does.
+
+However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go.
+
+First off, what is jq? Let’s run the man command
+
+$ man jq  
+
+
+
+
+The man page is a helpful resource, but don’t for get to RTFM. The manual is available at https://stedolan.github.io/jq/manual/
+
+You can also find the instructions to download and install jq from this same website.
+
+First let’s see what version of jq has been installed
+
+$ jq –-version
+
+
+
+
+Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded here. First, lets take a look at it:
+
+$ cat policy.json
+
+
+
+
+jq is designed to take json as input and transform it and write it back out to standard out.
+Example:
+
+$ jq '.' policy.json
+
+
+
+
+But frequently you will see it piped in from another command:
+
+$ cat policy.json | jq '.'
+
+
+or
+
+$ echo '"cloud"'  | jq '.'
+"cloud"
+
+
+Filters
+
+jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual.
+
+So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable.
+
+Taking a look at our policy.json file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version:
+
+$ cat policy.json | jq '.Version'
+"2012-10-17"
+
+
+Now let’s extract the Statement:
+
+$ cat policy.json | jq '.Statement'
+
+
+
+
+The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run:
+
+$ cat policy.json | jq '.Statement[]'
+
+
+
+
+If we want to access the Action element, we can by adding that onto our jq filter, as follows:
+
+$ cat policy.json | jq '.Statement[].Effect'
+
+
+
+
+Note that functionally, that is the same as
+
+$ cat policy.json | jq '.Statement[] | .Effect'
+
+
+
+
+The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that.
+
+If we want to access the Action element, we can by adding that onto our jq filter, as follows:
+
+cat policy.json | jq '.Statement[].Action'
+
+
+
+
+This program returned an array consisting of four items. To get the items from the array, add in the square brackets again:
+
+cat policy.json | jq '.Statement[].Action[]'
+
+
+
+
+Similarly to extract the:
+
+  First element of a List –&gt;  '.[0]'
+  Third Element of a list –&gt; '.[2]'
+  Last Element of a list –&gt; '.[-1]'
+  Next to last element –&gt; '.[-2]'
+  Elements 2 through 3 –&gt; '.[1:3]'
+  All but first element –&gt; .[1:]
+
+
+
+
+Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets.
+
+Commas
+
+Now that we have talked about square brackets, let’s discuss commas.
+
+If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order:
+
+cat policy.json | jq '.Version, .Statement[].Effect'
+
+
+
+
+Math
+jq can also do math:
+
+$ cat policy.json | jq '42'
+42
+$ cat policy.json | jq '42 + 3'
+45
+$ cat policy.json | jq '(3 + 2) * 5'
+25
+$ cat policy.json | jq '3 + (2 * 5)'
+13
+
+
+Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input:
+
+$ echo [1, 2, 3] | jq '.[] * 2'
+2
+4
+6
+
+
+Or to return the result as an array, put the filter in square brackets:
+
+$ echo [1, 2, 3] | jq '[.[] * 2]'
+[
+  2,
+  4,
+  6
+]
+
+
+Cool Tricks with jq
+By the way, you can return the result in the compact format with the “-c” switch:
+
+$ echo [1, 2, 3] | jq -c '[.[] * 2]'
+[2,4,6]
+
+
+Note, that lower case “c” means “compact format”
+
+For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command:
+
+aws ec2 describe-instances &gt; describe-instances.json
+
+
+This file is also available here and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command.
+
+less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds?
+
+Well, you can with the right command line switches:
+
+cat describe-instances.json | jq -C '.' | less -r
+
+
+The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output.
+
+Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids?
+
+$ cat describe-instances.json | jq -C '.' | head
+$ cat describe-instances.json | jq -C '.Reservations[].Instances[].InstanceId'
+
+
+
+
+There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent:
+
+cat describe-instances.json | jq  '..|.InstanceId?'
+
+
+Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set.
+
+We could pipe this into the Linux “sort” and “uniq” commands as follows:
+
+cat describe-instances.json | jq  '..|.InstanceId?' | sort | uniq
+
+
+But let’s do this using jq:
+
+cat describe-instances.json | jq  '..|.InstanceId? | sort'
+
+
+
+
+Oops, we need to make it an array:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort'
+
+
+That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique'
+
+
+
+
+Somewhat better, but we still have a single null in our result. Let’s remove it:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:]'
+
+
+
+
+And if we want to remove the data from the array:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:][]'
+
+
+
+
+Selection Based on the Value of a Key
+
+Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | select(.InstanceId == "i-03494dbc500e8e306")'
+
+
+
+
+Constructing Objects
+
+In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator?
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress'
+
+
+
+
+We can make these into an object using curly brackets and setting a key for each value:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+
+
+
+
+There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example,  the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+
+
+Now, lets put all four of those objects into an array:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+
+
+
+
+Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place.
+
+cat describe-instances.json | jq '[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+
+
+
+
+Much better. Now let’s make the array part of an object with a key called “MySystems.”
+
+cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}'
+
+
+
+
+Very nice. Let’s add in LaunchTime and save that to a file:
+
+cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}' &gt; MySystems.json
+
+
+Take a look:
+
+jq '.' MySystems.json
+
+
+
+
+Cool, now let’s sort this by LaunchTime:
+
+cat MySystems.json | jq '.MySystems | sort_by(.LaunchTime)'
+
+
+
+
+Alternatively, we can group our data by Availability Zone:
+
+cat MySystems.json | jq '.MySystems | group_by(.AZ)'
+
+
+
+
+We can even add in a new key-value pair for all objects in our array:
+
+cat MySystems.json | jq '.MySystems[].Region = "Northern Virginia"'
+
+
+
+
+We can even use jq to modify values of a JSON object.
+
+For example, if we have a trust policy (available here):
+
+jq '.' trust_policy.json
+
+
+
+
+And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows:
+
+cat trust_policy.json | jq '.Statement[0].Sid |= . + "99"'
+
+
+
+
+Note that when we are working on strings the “+” performs concatenation.
+
+We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny:
+
+cat trust_policy.json | jq '.Statement[0].Effect = "Deny"'
+
+
+
+
+Wrap Up
+
+Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to head-in-the-clouds-security@googlegroups.com.
+
+Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface">
+<meta property="og:description" content="1 - Using jq to Get the Results You Need From Any Command Line Interface
+
+
+
+Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform.
+
+In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to  understand what the command does.
+
+However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go.
+
+First off, what is jq? Let’s run the man command
+
+$ man jq  
+
+
+
+
+The man page is a helpful resource, but don’t for get to RTFM. The manual is available at https://stedolan.github.io/jq/manual/
+
+You can also find the instructions to download and install jq from this same website.
+
+First let’s see what version of jq has been installed
+
+$ jq –-version
+
+
+
+
+Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded here. First, lets take a look at it:
+
+$ cat policy.json
+
+
+
+
+jq is designed to take json as input and transform it and write it back out to standard out.
+Example:
+
+$ jq '.' policy.json
+
+
+
+
+But frequently you will see it piped in from another command:
+
+$ cat policy.json | jq '.'
+
+
+or
+
+$ echo '"cloud"'  | jq '.'
+"cloud"
+
+
+Filters
+
+jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual.
+
+So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable.
+
+Taking a look at our policy.json file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version:
+
+$ cat policy.json | jq '.Version'
+"2012-10-17"
+
+
+Now let’s extract the Statement:
+
+$ cat policy.json | jq '.Statement'
+
+
+
+
+The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run:
+
+$ cat policy.json | jq '.Statement[]'
+
+
+
+
+If we want to access the Action element, we can by adding that onto our jq filter, as follows:
+
+$ cat policy.json | jq '.Statement[].Effect'
+
+
+
+
+Note that functionally, that is the same as
+
+$ cat policy.json | jq '.Statement[] | .Effect'
+
+
+
+
+The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that.
+
+If we want to access the Action element, we can by adding that onto our jq filter, as follows:
+
+cat policy.json | jq '.Statement[].Action'
+
+
+
+
+This program returned an array consisting of four items. To get the items from the array, add in the square brackets again:
+
+cat policy.json | jq '.Statement[].Action[]'
+
+
+
+
+Similarly to extract the:
+
+  First element of a List –&gt;  '.[0]'
+  Third Element of a list –&gt; '.[2]'
+  Last Element of a list –&gt; '.[-1]'
+  Next to last element –&gt; '.[-2]'
+  Elements 2 through 3 –&gt; '.[1:3]'
+  All but first element –&gt; .[1:]
+
+
+
+
+Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets.
+
+Commas
+
+Now that we have talked about square brackets, let’s discuss commas.
+
+If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order:
+
+cat policy.json | jq '.Version, .Statement[].Effect'
+
+
+
+
+Math
+jq can also do math:
+
+$ cat policy.json | jq '42'
+42
+$ cat policy.json | jq '42 + 3'
+45
+$ cat policy.json | jq '(3 + 2) * 5'
+25
+$ cat policy.json | jq '3 + (2 * 5)'
+13
+
+
+Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input:
+
+$ echo [1, 2, 3] | jq '.[] * 2'
+2
+4
+6
+
+
+Or to return the result as an array, put the filter in square brackets:
+
+$ echo [1, 2, 3] | jq '[.[] * 2]'
+[
+  2,
+  4,
+  6
+]
+
+
+Cool Tricks with jq
+By the way, you can return the result in the compact format with the “-c” switch:
+
+$ echo [1, 2, 3] | jq -c '[.[] * 2]'
+[2,4,6]
+
+
+Note, that lower case “c” means “compact format”
+
+For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command:
+
+aws ec2 describe-instances &gt; describe-instances.json
+
+
+This file is also available here and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command.
+
+less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds?
+
+Well, you can with the right command line switches:
+
+cat describe-instances.json | jq -C '.' | less -r
+
+
+The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output.
+
+Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids?
+
+$ cat describe-instances.json | jq -C '.' | head
+$ cat describe-instances.json | jq -C '.Reservations[].Instances[].InstanceId'
+
+
+
+
+There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent:
+
+cat describe-instances.json | jq  '..|.InstanceId?'
+
+
+Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set.
+
+We could pipe this into the Linux “sort” and “uniq” commands as follows:
+
+cat describe-instances.json | jq  '..|.InstanceId?' | sort | uniq
+
+
+But let’s do this using jq:
+
+cat describe-instances.json | jq  '..|.InstanceId? | sort'
+
+
+
+
+Oops, we need to make it an array:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort'
+
+
+That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique'
+
+
+
+
+Somewhat better, but we still have a single null in our result. Let’s remove it:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:]'
+
+
+
+
+And if we want to remove the data from the array:
+
+cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:][]'
+
+
+
+
+Selection Based on the Value of a Key
+
+Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | select(.InstanceId == "i-03494dbc500e8e306")'
+
+
+
+
+Constructing Objects
+
+In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator?
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress'
+
+
+
+
+We can make these into an object using curly brackets and setting a key for each value:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+
+
+
+
+There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example,  the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+
+
+Now, lets put all four of those objects into an array:
+
+cat describe-instances.json | jq '.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+
+
+
+
+Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place.
+
+cat describe-instances.json | jq '[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+
+
+
+
+Much better. Now let’s make the array part of an object with a key called “MySystems.”
+
+cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}'
+
+
+
+
+Very nice. Let’s add in LaunchTime and save that to a file:
+
+cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}' &gt; MySystems.json
+
+
+Take a look:
+
+jq '.' MySystems.json
+
+
+
+
+Cool, now let’s sort this by LaunchTime:
+
+cat MySystems.json | jq '.MySystems | sort_by(.LaunchTime)'
+
+
+
+
+Alternatively, we can group our data by Availability Zone:
+
+cat MySystems.json | jq '.MySystems | group_by(.AZ)'
+
+
+
+
+We can even add in a new key-value pair for all objects in our array:
+
+cat MySystems.json | jq '.MySystems[].Region = "Northern Virginia"'
+
+
+
+
+We can even use jq to modify values of a JSON object.
+
+For example, if we have a trust policy (available here):
+
+jq '.' trust_policy.json
+
+
+
+
+And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows:
+
+cat trust_policy.json | jq '.Statement[0].Sid |= . + "99"'
+
+
+
+
+Note that when we are working on strings the “+” performs concatenation.
+
+We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny:
+
+cat trust_policy.json | jq '.Statement[0].Effect = "Deny"'
+
+
+
+
+Wrap Up
+
+Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to head-in-the-clouds-security@googlegroups.com.
+
+Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+">
+<meta property="og:url" content="/episodes/episode01/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode01/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="1 - Using jq to Get the Results You Need From Any Command Line Interface Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform. In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to understand what the command does. However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go. First off, what is jq? Let’s run the man command $ man jq The man page is a helpful resource, but don’t for get to RTFM. The manual is available at https://stedolan.github.io/jq/manual/ You can also find the instructions to download and install jq from this same website. First let’s see what version of jq has been installed $ jq –-version Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded here. First, lets take a look at it: $ cat policy.json jq is designed to take json as input and transform it and write it back out to standard out. Example: $ jq &#39;.&#39; policy.json But frequently you will see it piped in from another command: $ cat policy.json | jq &#39;.&#39; or $ echo &#39;&quot;cloud&quot;&#39; | jq &#39;.&#39; &quot;cloud&quot; Filters jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual. So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable. Taking a look at our policy.json file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version: $ cat policy.json | jq &#39;.Version&#39; &quot;2012-10-17&quot; Now let’s extract the Statement: $ cat policy.json | jq &#39;.Statement&#39; The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run: $ cat policy.json | jq &#39;.Statement[]&#39; If we want to access the Action element, we can by adding that onto our jq filter, as follows: $ cat policy.json | jq &#39;.Statement[].Effect&#39; Note that functionally, that is the same as $ cat policy.json | jq &#39;.Statement[] | .Effect&#39; The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that. If we want to access the Action element, we can by adding that onto our jq filter, as follows: cat policy.json | jq &#39;.Statement[].Action&#39; This program returned an array consisting of four items. To get the items from the array, add in the square brackets again: cat policy.json | jq &#39;.Statement[].Action[]&#39; Similarly to extract the: First element of a List –&gt; &#39;.[0]&#39; Third Element of a list –&gt; &#39;.[2]&#39; Last Element of a list –&gt; &#39;.[-1]&#39; Next to last element –&gt; &#39;.[-2]&#39; Elements 2 through 3 –&gt; &#39;.[1:3]&#39; All but first element –&gt; .[1:] Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets. Commas Now that we have talked about square brackets, let’s discuss commas. If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order: cat policy.json | jq &#39;.Version, .Statement[].Effect&#39; Math jq can also do math: $ cat policy.json | jq &#39;42&#39; 42 $ cat policy.json | jq &#39;42 + 3&#39; 45 $ cat policy.json | jq &#39;(3 + 2) * 5&#39; 25 $ cat policy.json | jq &#39;3 + (2 * 5)&#39; 13 Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input: $ echo [1, 2, 3] | jq &#39;.[] * 2&#39; 2 4 6 Or to return the result as an array, put the filter in square brackets: $ echo [1, 2, 3] | jq &#39;[.[] * 2]&#39; [ 2, 4, 6 ] Cool Tricks with jq By the way, you can return the result in the compact format with the “-c” switch: $ echo [1, 2, 3] | jq -c &#39;[.[] * 2]&#39; [2,4,6] Note, that lower case “c” means “compact format” For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command: aws ec2 describe-instances &gt; describe-instances.json This file is also available here and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command. less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds? Well, you can with the right command line switches: cat describe-instances.json | jq -C &#39;.&#39; | less -r The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output. Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids? $ cat describe-instances.json | jq -C &#39;.&#39; | head $ cat describe-instances.json | jq -C &#39;.Reservations[].Instances[].InstanceId&#39; There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent: cat describe-instances.json | jq &#39;..|.InstanceId?&#39; Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set. We could pipe this into the Linux “sort” and “uniq” commands as follows: cat describe-instances.json | jq &#39;..|.InstanceId?&#39; | sort | uniq But let’s do this using jq: cat describe-instances.json | jq &#39;..|.InstanceId? | sort&#39; Oops, we need to make it an array: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort&#39; That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique&#39; Somewhat better, but we still have a single null in our result. Let’s remove it: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique[1:]&#39; And if we want to remove the data from the array: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique[1:][]&#39; Selection Based on the Value of a Key Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | select(.InstanceId == &quot;i-03494dbc500e8e306&quot;)&#39; Constructing Objects In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator? cat describe-instances.json | jq &#39;.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress&#39; We can make these into an object using curly brackets and setting a key for each value: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}&#39; There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example, the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}&#39; Now, lets put all four of those objects into an array: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]&#39; Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place. cat describe-instances.json | jq &#39;[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]&#39; Much better. Now let’s make the array part of an object with a key called “MySystems.” cat describe-instances.json | jq &#39;{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}&#39; Very nice. Let’s add in LaunchTime and save that to a file: cat describe-instances.json | jq &#39;{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}&#39; &gt; MySystems.json Take a look: jq &#39;.&#39; MySystems.json Cool, now let’s sort this by LaunchTime: cat MySystems.json | jq &#39;.MySystems | sort_by(.LaunchTime)&#39; Alternatively, we can group our data by Availability Zone: cat MySystems.json | jq &#39;.MySystems | group_by(.AZ)&#39; We can even add in a new key-value pair for all objects in our array: cat MySystems.json | jq &#39;.MySystems[].Region = &quot;Northern Virginia&quot;&#39; We can even use jq to modify values of a JSON object. For example, if we have a trust policy (available here): jq &#39;.&#39; trust_policy.json And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows: cat trust_policy.json | jq &#39;.Statement[0].Sid |= . + &quot;99&quot;&#39; Note that when we are working on strings the “+” performs concatenation. We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny: cat trust_policy.json | jq &#39;.Statement[0].Effect = &quot;Deny&quot;&#39; Wrap Up Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual. If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to head-in-the-clouds-security@googlegroups.com. Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel." />
+<meta property="og:description" content="1 - Using jq to Get the Results You Need From Any Command Line Interface Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform. In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to understand what the command does. However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go. First off, what is jq? Let’s run the man command $ man jq The man page is a helpful resource, but don’t for get to RTFM. The manual is available at https://stedolan.github.io/jq/manual/ You can also find the instructions to download and install jq from this same website. First let’s see what version of jq has been installed $ jq –-version Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded here. First, lets take a look at it: $ cat policy.json jq is designed to take json as input and transform it and write it back out to standard out. Example: $ jq &#39;.&#39; policy.json But frequently you will see it piped in from another command: $ cat policy.json | jq &#39;.&#39; or $ echo &#39;&quot;cloud&quot;&#39; | jq &#39;.&#39; &quot;cloud&quot; Filters jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual. So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable. Taking a look at our policy.json file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version: $ cat policy.json | jq &#39;.Version&#39; &quot;2012-10-17&quot; Now let’s extract the Statement: $ cat policy.json | jq &#39;.Statement&#39; The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run: $ cat policy.json | jq &#39;.Statement[]&#39; If we want to access the Action element, we can by adding that onto our jq filter, as follows: $ cat policy.json | jq &#39;.Statement[].Effect&#39; Note that functionally, that is the same as $ cat policy.json | jq &#39;.Statement[] | .Effect&#39; The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that. If we want to access the Action element, we can by adding that onto our jq filter, as follows: cat policy.json | jq &#39;.Statement[].Action&#39; This program returned an array consisting of four items. To get the items from the array, add in the square brackets again: cat policy.json | jq &#39;.Statement[].Action[]&#39; Similarly to extract the: First element of a List –&gt; &#39;.[0]&#39; Third Element of a list –&gt; &#39;.[2]&#39; Last Element of a list –&gt; &#39;.[-1]&#39; Next to last element –&gt; &#39;.[-2]&#39; Elements 2 through 3 –&gt; &#39;.[1:3]&#39; All but first element –&gt; .[1:] Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets. Commas Now that we have talked about square brackets, let’s discuss commas. If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order: cat policy.json | jq &#39;.Version, .Statement[].Effect&#39; Math jq can also do math: $ cat policy.json | jq &#39;42&#39; 42 $ cat policy.json | jq &#39;42 + 3&#39; 45 $ cat policy.json | jq &#39;(3 + 2) * 5&#39; 25 $ cat policy.json | jq &#39;3 + (2 * 5)&#39; 13 Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input: $ echo [1, 2, 3] | jq &#39;.[] * 2&#39; 2 4 6 Or to return the result as an array, put the filter in square brackets: $ echo [1, 2, 3] | jq &#39;[.[] * 2]&#39; [ 2, 4, 6 ] Cool Tricks with jq By the way, you can return the result in the compact format with the “-c” switch: $ echo [1, 2, 3] | jq -c &#39;[.[] * 2]&#39; [2,4,6] Note, that lower case “c” means “compact format” For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command: aws ec2 describe-instances &gt; describe-instances.json This file is also available here and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command. less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds? Well, you can with the right command line switches: cat describe-instances.json | jq -C &#39;.&#39; | less -r The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output. Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids? $ cat describe-instances.json | jq -C &#39;.&#39; | head $ cat describe-instances.json | jq -C &#39;.Reservations[].Instances[].InstanceId&#39; There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent: cat describe-instances.json | jq &#39;..|.InstanceId?&#39; Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set. We could pipe this into the Linux “sort” and “uniq” commands as follows: cat describe-instances.json | jq &#39;..|.InstanceId?&#39; | sort | uniq But let’s do this using jq: cat describe-instances.json | jq &#39;..|.InstanceId? | sort&#39; Oops, we need to make it an array: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort&#39; That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique&#39; Somewhat better, but we still have a single null in our result. Let’s remove it: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique[1:]&#39; And if we want to remove the data from the array: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique[1:][]&#39; Selection Based on the Value of a Key Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | select(.InstanceId == &quot;i-03494dbc500e8e306&quot;)&#39; Constructing Objects In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator? cat describe-instances.json | jq &#39;.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress&#39; We can make these into an object using curly brackets and setting a key for each value: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}&#39; There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example, the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}&#39; Now, lets put all four of those objects into an array: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]&#39; Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place. cat describe-instances.json | jq &#39;[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]&#39; Much better. Now let’s make the array part of an object with a key called “MySystems.” cat describe-instances.json | jq &#39;{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}&#39; Very nice. Let’s add in LaunchTime and save that to a file: cat describe-instances.json | jq &#39;{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}&#39; &gt; MySystems.json Take a look: jq &#39;.&#39; MySystems.json Cool, now let’s sort this by LaunchTime: cat MySystems.json | jq &#39;.MySystems | sort_by(.LaunchTime)&#39; Alternatively, we can group our data by Availability Zone: cat MySystems.json | jq &#39;.MySystems | group_by(.AZ)&#39; We can even add in a new key-value pair for all objects in our array: cat MySystems.json | jq &#39;.MySystems[].Region = &quot;Northern Virginia&quot;&#39; We can even use jq to modify values of a JSON object. For example, if we have a trust policy (available here): jq &#39;.&#39; trust_policy.json And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows: cat trust_policy.json | jq &#39;.Statement[0].Sid |= . + &quot;99&quot;&#39; Note that when we are working on strings the “+” performs concatenation. We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny: cat trust_policy.json | jq &#39;.Statement[0].Effect = &quot;Deny&quot;&#39; Wrap Up Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual. If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to head-in-the-clouds-security@googlegroups.com. Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode01/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode01/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:38-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"1 - Using jq to Get the Results You Need From Any Command Line Interface Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform. In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to understand what the command does. However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go. First off, what is jq? Let’s run the man command $ man jq The man page is a helpful resource, but don’t for get to RTFM. The manual is available at https://stedolan.github.io/jq/manual/ You can also find the instructions to download and install jq from this same website. First let’s see what version of jq has been installed $ jq –-version Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded here. First, lets take a look at it: $ cat policy.json jq is designed to take json as input and transform it and write it back out to standard out. Example: $ jq &#39;.&#39; policy.json But frequently you will see it piped in from another command: $ cat policy.json | jq &#39;.&#39; or $ echo &#39;&quot;cloud&quot;&#39; | jq &#39;.&#39; &quot;cloud&quot; Filters jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual. So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable. Taking a look at our policy.json file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version: $ cat policy.json | jq &#39;.Version&#39; &quot;2012-10-17&quot; Now let’s extract the Statement: $ cat policy.json | jq &#39;.Statement&#39; The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run: $ cat policy.json | jq &#39;.Statement[]&#39; If we want to access the Action element, we can by adding that onto our jq filter, as follows: $ cat policy.json | jq &#39;.Statement[].Effect&#39; Note that functionally, that is the same as $ cat policy.json | jq &#39;.Statement[] | .Effect&#39; The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that. If we want to access the Action element, we can by adding that onto our jq filter, as follows: cat policy.json | jq &#39;.Statement[].Action&#39; This program returned an array consisting of four items. To get the items from the array, add in the square brackets again: cat policy.json | jq &#39;.Statement[].Action[]&#39; Similarly to extract the: First element of a List –&gt; &#39;.[0]&#39; Third Element of a list –&gt; &#39;.[2]&#39; Last Element of a list –&gt; &#39;.[-1]&#39; Next to last element –&gt; &#39;.[-2]&#39; Elements 2 through 3 –&gt; &#39;.[1:3]&#39; All but first element –&gt; .[1:] Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets. Commas Now that we have talked about square brackets, let’s discuss commas. If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order: cat policy.json | jq &#39;.Version, .Statement[].Effect&#39; Math jq can also do math: $ cat policy.json | jq &#39;42&#39; 42 $ cat policy.json | jq &#39;42 + 3&#39; 45 $ cat policy.json | jq &#39;(3 + 2) * 5&#39; 25 $ cat policy.json | jq &#39;3 + (2 * 5)&#39; 13 Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input: $ echo [1, 2, 3] | jq &#39;.[] * 2&#39; 2 4 6 Or to return the result as an array, put the filter in square brackets: $ echo [1, 2, 3] | jq &#39;[.[] * 2]&#39; [ 2, 4, 6 ] Cool Tricks with jq By the way, you can return the result in the compact format with the “-c” switch: $ echo [1, 2, 3] | jq -c &#39;[.[] * 2]&#39; [2,4,6] Note, that lower case “c” means “compact format” For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command: aws ec2 describe-instances &gt; describe-instances.json This file is also available here and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command. less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds? Well, you can with the right command line switches: cat describe-instances.json | jq -C &#39;.&#39; | less -r The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output. Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids? $ cat describe-instances.json | jq -C &#39;.&#39; | head $ cat describe-instances.json | jq -C &#39;.Reservations[].Instances[].InstanceId&#39; There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent: cat describe-instances.json | jq &#39;..|.InstanceId?&#39; Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set. We could pipe this into the Linux “sort” and “uniq” commands as follows: cat describe-instances.json | jq &#39;..|.InstanceId?&#39; | sort | uniq But let’s do this using jq: cat describe-instances.json | jq &#39;..|.InstanceId? | sort&#39; Oops, we need to make it an array: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort&#39; That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique&#39; Somewhat better, but we still have a single null in our result. Let’s remove it: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique[1:]&#39; And if we want to remove the data from the array: cat describe-instances.json | jq &#39;[..|.InstanceId?] | sort | unique[1:][]&#39; Selection Based on the Value of a Key Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | select(.InstanceId == &quot;i-03494dbc500e8e306&quot;)&#39; Constructing Objects In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator? cat describe-instances.json | jq &#39;.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress&#39; We can make these into an object using curly brackets and setting a key for each value: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}&#39; There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example, the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}&#39; Now, lets put all four of those objects into an array: cat describe-instances.json | jq &#39;.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]&#39; Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place. cat describe-instances.json | jq &#39;[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]&#39; Much better. Now let’s make the array part of an object with a key called “MySystems.” cat describe-instances.json | jq &#39;{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}&#39; Very nice. Let’s add in LaunchTime and save that to a file: cat describe-instances.json | jq &#39;{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}&#39; &gt; MySystems.json Take a look: jq &#39;.&#39; MySystems.json Cool, now let’s sort this by LaunchTime: cat MySystems.json | jq &#39;.MySystems | sort_by(.LaunchTime)&#39; Alternatively, we can group our data by Availability Zone: cat MySystems.json | jq &#39;.MySystems | group_by(.AZ)&#39; We can even add in a new key-value pair for all objects in our array: cat MySystems.json | jq &#39;.MySystems[].Region = &quot;Northern Virginia&quot;&#39; We can even use jq to modify values of a JSON object. For example, if we have a trust policy (available here): jq &#39;.&#39; trust_policy.json And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows: cat trust_policy.json | jq &#39;.Statement[0].Sid |= . + &quot;99&quot;&#39; Note that when we are working on strings the “+” performs concatenation. We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny: cat trust_policy.json | jq &#39;.Statement[0].Effect = &quot;Deny&quot;&#39; Wrap Up Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual. If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to head-in-the-clouds-security@googlegroups.com. Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.","headline":"Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode01/"},"url":"http://localhost:4000/episodes/episode01/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 1 - Using jq to Get the Results You Need From Any Command Line Interface</h1>
+    <div class="article-wrap">
+      <p>1 - Using jq to Get the Results You Need From Any Command Line Interface</p>
+
+<div class="video-container"><iframe src="https://www.youtube.com/embed/5KxWfeFPPVY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to the Very First Edition of “Head in the Clouds.” Hello, I am Ken Hartman, a Certified SANS Instructor and content creator. For today’s episode, we will be talking about jq. What it is, and how to make it dance. JSON, or Javascript Object Notation is everywhere, and it is often the default output format of many command line interfaces—including the command line interfaces for AWS, Azure, and Google Cloud Platform.</p>
+
+<p>In the SANS Cloud Security Curriculum, we frequently use jq in our labs to manipulate the output of various commands and expect that the student will dive in deep enough to  understand what the command does.</p>
+
+<p>However, unless one takes the time to learn jq systematically, they will not be able to tap into the power of this amazing utility…So for this episode, let’s explore some of the power of jq, using cloudy and cloud security use cases….Here we go.</p>
+
+<p>First off, what is jq? Let’s run the man command</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ man jq  
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture1.png" alt="Image of the output from man jq" /></p>
+
+<p>The man page is a helpful resource, but don’t for get to RTFM. The manual is available at <a href="https://stedolan.github.io/jq/manual/">https://stedolan.github.io/jq/manual/</a></p>
+
+<p>You can also find the instructions to download and install jq from this same website.</p>
+
+<p>First let’s see what version of jq has been installed</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ jq –-version
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture2.png" alt="Image of the output from jq –-version" /></p>
+
+<p>Ok, lets use the appropriate manual and look at some jq magic. For our next several examples, we will use a very basic AWS IAM policy file. This can be downloaded <a href="/extras/ep1/policy.json">here</a>. First, lets take a look at it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture3.png" alt="Image of the output from cat policy.json" /></p>
+
+<p>jq is designed to take json as input and transform it and write it back out to standard out.
+Example:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ jq '.' policy.json
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture4.png" alt="Image of the output from previous command" /></p>
+
+<p>But frequently you will see it piped in from another command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '.'
+</code></pre></div></div>
+
+<p>or</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ echo '"cloud"'  | jq '.'
+"cloud"
+</code></pre></div></div>
+
+<h2 id="filters">Filters</h2>
+
+<p>jq uses one or more filters to transform the input and collectively the filters are referred to as a program in the jq manual.</p>
+
+<p>So far, we have only used one filter, that is the period. The period simply takes the input and sends that to standard out. By default, though, the jq will pretty print the output and colorize it, so that it is more readable.</p>
+
+<p>Taking a look at our <a href="/extras/ep1/policy.json">policy.json</a> file, we can see that there is two top level keys “Version” and “Statement”, lets extract the version:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '.Version'
+"2012-10-17"
+</code></pre></div></div>
+
+<p>Now let’s extract the Statement:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '.Statement'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture5.png" alt="Image of the output from previous command" /></p>
+
+<p>The statement has some child objects. The next level down is an array as indicated by the square brackets. We can also see that it is an array that consists of a single object (that contains other elements). To get the contents of the array, run:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '.Statement[]'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture6.png" alt="Image of the output from previous command" /></p>
+
+<p>If we want to access the Action element, we can by adding that onto our jq filter, as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '.Statement[].Effect'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture7.png" alt="Image of the output from previous command" /></p>
+
+<p>Note that functionally, that is the same as</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '.Statement[] | .Effect'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture8.png" alt="Image of the output from previous command" /></p>
+
+<p>The pipe operator (“|”) combines two filters by feeding the output(s) of the one on the left into the input of the filter on the right. This is just like the Unix shell’s pipe, if you’re familiar with that.</p>
+
+<p>If we want to access the Action element, we can by adding that onto our jq filter, as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat policy.json | jq '.Statement[].Action'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture9.png" alt="Image of the output from previous command" /></p>
+
+<p>This program returned an array consisting of four items. To get the items from the array, add in the square brackets again:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat policy.json | jq '.Statement[].Action[]'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture10.png" alt="Image of the output from previous command" /></p>
+
+<p>Similarly to extract the:</p>
+<ul>
+  <li>First element of a List –&gt;  <code class="language-plaintext highlighter-rouge">'.[0]'</code></li>
+  <li>Third Element of a list –&gt; <code class="language-plaintext highlighter-rouge">'.[2]'</code></li>
+  <li>Last Element of a list –&gt; <code class="language-plaintext highlighter-rouge">'.[-1]'</code></li>
+  <li>Next to last element –&gt; <code class="language-plaintext highlighter-rouge">'.[-2]'</code></li>
+  <li>Elements 2 through 3 –&gt; <code class="language-plaintext highlighter-rouge">'.[1:3]'</code></li>
+  <li>All but first element –&gt; <code class="language-plaintext highlighter-rouge">.[1:]</code></li>
+</ul>
+
+<p><img src="/images/ep1/Picture11.png" alt="Image of the output from previous command" /></p>
+
+<p>Note that the last example put the result back into an array. To extract it, we just add in another set of square brackets.</p>
+
+<h2 id="commas">Commas</h2>
+
+<p>Now that we have talked about square brackets, let’s discuss commas.</p>
+
+<p>If two filters are separated by a comma, then the same input will be fed into both and the two filters’ output value streams will be concatenated in order:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat policy.json | jq '.Version, .Statement[].Effect'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture12.png" alt="Image of the output from previous command" /></p>
+
+<h2 id="math">Math</h2>
+<p>jq can also do math:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat policy.json | jq '42'
+42
+$ cat policy.json | jq '42 + 3'
+45
+$ cat policy.json | jq '(3 + 2) * 5'
+25
+$ cat policy.json | jq '3 + (2 * 5)'
+13
+</code></pre></div></div>
+
+<p>Here it is just disregarding the input and returning the mathematical result. But jq can also operate on numerical input:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ echo [1, 2, 3] | jq '.[] * 2'
+2
+4
+6
+</code></pre></div></div>
+
+<p>Or to return the result as an array, put the filter in square brackets:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ echo [1, 2, 3] | jq '[.[] * 2]'
+[
+  2,
+  4,
+  6
+]
+</code></pre></div></div>
+
+<h2 id="cool-tricks-with-jq">Cool Tricks with jq</h2>
+<p>By the way, you can return the result in the compact format with the “-c” switch:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ echo [1, 2, 3] | jq -c '[.[] * 2]'
+[2,4,6]
+</code></pre></div></div>
+
+<p>Note, that lower case “c” means “compact format”</p>
+
+<p>For the next set of examples, we will use a more complex JSON file. This file was created by running the following AWS CLI command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-instances &gt; describe-instances.json
+</code></pre></div></div>
+
+<p>This file is also available <a href="/extras/ep1/describe-instances.json">here</a> and contains the details of four different EC2 instances. Now, to view the file, you could use the Linux ‘less’ command.</p>
+
+<p>less is great because you can scroll up and down to look at the entirety of the long file, but it is not colorized the same way it would be if we used jq. However, if we use jq, we get the nifty colorized output but cannot scroll up and down. Wouldn’t it be nifty if we could have the best of both worlds?</p>
+
+<p>Well, you can with the right command line switches:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq -C '.' | less -r
+</code></pre></div></div>
+
+<p>The capital “C” tells jq to force the output to be colorized, even when piping to another command and the “-r“ switch tells less to repaint the screen using the colorized input. Both options need to be used together, but now we have scrollable, colorized output.</p>
+
+<p>Using this last command, take a look at the top of the JSON file for the “instance-id” key. It is deep within the JSON data structure. Can you come up with the filter to extract the instance ids?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ cat describe-instances.json | jq -C '.' | head
+$ cat describe-instances.json | jq -C '.Reservations[].Instances[].InstanceId'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture13.png" alt="Image of the output from previous command" /></p>
+
+<p>There is a shortcut, if you are like me and are lazy, you can get a quick and dirty list using recursive descent:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '..|.InstanceId?'
+</code></pre></div></div>
+
+<p>Note that the “?” is needed to suppress errors as jq descends the data structure, instead it outputs a null. And because it is a large data structure, we end up will several nulls in the result set.</p>
+
+<p>We could pipe this into the Linux “sort” and “uniq” commands as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '..|.InstanceId?' | sort | uniq
+</code></pre></div></div>
+
+<p>But let’s do this using jq:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '..|.InstanceId? | sort'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture14.png" alt="Image of the output from previous command" /></p>
+
+<p>Oops, we need to make it an array:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '[..|.InstanceId?] | sort'
+</code></pre></div></div>
+
+<p>That’s better, but we still have a bunch of nulls. Next let’s add in the unique filter:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture15.png" alt="Image of the output from previous command" /></p>
+
+<p>Somewhat better, but we still have a single null in our result. Let’s remove it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:]'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture16.png" alt="Image of the output from previous command" /></p>
+
+<p>And if we want to remove the data from the array:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq  '[..|.InstanceId?] | sort | unique[1:][]'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture17.png" alt="Image of the output from previous command" /></p>
+
+<h2 id="selection-based-on-the-value-of-a-key">Selection Based on the Value of a Key</h2>
+
+<p>Based on the last exercise, we can see that we have four EC2 Instances. We can use a “select” filter to return the object that has a specific value for any key. Let’s use this technique to select based on a specific InstanceId:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '.Reservations[].Instances[] | select(.InstanceId == "i-03494dbc500e8e306")'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture31.png" alt="Image of the output from previous command" /></p>
+
+<h2 id="constructing-objects">Constructing Objects</h2>
+
+<p>In much the same way that we can use square brackets to construct an array, we can construct objects Using Curly Brackets. Recall our comma operator?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '.Reservations[].Instances[] | .InstanceId, .InstanceType, .Placement.AvailabilityZone, .PublicIpAddress'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture18.png" alt="Image of the output from previous command" /></p>
+
+<p>We can make these into an object using curly brackets and setting a key for each value:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId: .InstanceId, InstanceType: .InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture19.png" alt="Image of the output from previous command" /></p>
+
+<p>There is a shorthand that can be used if you do not need to rename the key. In that case, just provide the name of the key before the comma. In the next example,  the keys “InstanceId” and “InstanceType are preserved from the input whereas the other two are renamed:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}'
+</code></pre></div></div>
+
+<p>Now, lets put all four of those objects into an array:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '.Reservations[].Instances[] | [{InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture20.png" alt="Image of the output from previous command" /></p>
+
+<p>Eww, that did not give the expected result, did it? Our open Square bracket is in the wrong place.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '[.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture21.png" alt="Image of the output from previous command" /></p>
+
+<p>Much better. Now let’s make the array part of an object with a key called “MySystems.”</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress}]}'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture22.png" alt="Image of the output from previous command" /></p>
+
+<p>Very nice. Let’s add in LaunchTime and save that to a file:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat describe-instances.json | jq '{MySystems: [.Reservations[].Instances[] | {InstanceId, InstanceType, AZ: .Placement.AvailabilityZone, IP: .PublicIpAddress, LaunchTime}]}' &gt; MySystems.json
+</code></pre></div></div>
+
+<p>Take a look:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>jq '.' MySystems.json
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture23.png" alt="Image of the output from previous command" /></p>
+
+<p>Cool, now let’s sort this by LaunchTime:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat MySystems.json | jq '.MySystems | sort_by(.LaunchTime)'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture24.png" alt="Image of the output from previous command" /></p>
+
+<p>Alternatively, we can group our data by Availability Zone:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat MySystems.json | jq '.MySystems | group_by(.AZ)'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture25.png" alt="Image of the output from previous command" /></p>
+
+<p>We can even add in a new key-value pair for all objects in our array:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat MySystems.json | jq '.MySystems[].Region = "Northern Virginia"'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture26.png" alt="Image of the output from previous command" /></p>
+
+<p>We can even use jq to modify values of a JSON object.</p>
+
+<p>For example, if we have a trust policy (available <a href="/extras/ep1/trust_policy.json">here</a>):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>jq '.' trust_policy.json
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture27.png" alt="Image of the output from previous command" /></p>
+
+<p>And we want to want to append the string “99” to the Sid, we can use the “update-assignment” operator as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat trust_policy.json | jq '.Statement[0].Sid |= . + "99"'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture29.png" alt="Image of the output from previous command" /></p>
+
+<p>Note that when we are working on strings the “+” performs concatenation.</p>
+
+<p>We can also use the regular assignment operator “=” if, for example we wanted to change a value. To demonstrate, we can change the Effect value to an explicit deny:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat trust_policy.json | jq '.Statement[0].Effect = "Deny"'
+</code></pre></div></div>
+
+<p><img src="/images/ep1/Picture30.png" alt="Image of the output from previous command" /></p>
+
+<h2 id="wrap-up">Wrap Up</h2>
+
+<p>Well. that’s it for our inaugural episode. jq can do so much more and we have only scratched the surface. There are many more operators, support for format strings, and many other features. So again, be sure to read the manual.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on our moderated Google Group by shooting a note to <a href="mailto://head-in-the-clouds-security@googlegroups.com">head-in-the-clouds-security@googlegroups.com</a>.</p>
+
+<p>Tune in next time for another installment of “Head in the Clouds.” Announcements of new episodes are made on the <a href="https://twitter.com/SANSCloudSec">SANS Cloud Security Twitter feed</a>.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode01/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode01/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode01/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

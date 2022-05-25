@@ -1,0 +1,1395 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 8 - Programmatically Access Google Cloud’s Secret Manager &mdash; Head in the Clouds</title>
+<meta name="description" content="8 - Programmatically Access Google Cloud’s Secret Manager
+
+
+
+Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Programmatically Access Google Secret Manager”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system!
+
+In fact, the Cloud Security Alliance identified this as Top Threat No. 4 in their “Top Threats to Cloud Computing - The Egregious 11” publication.
+
+
+  “Credentials and cryptographic keys must not be embedded in source code or distributed
+in public facing repositories (such as GitHub) because there is a high risk of discovery
+and misuse. Keys need to be appropriately secured with a well-secured public key
+infrastructure (PKI) to ensure key management activities are carried out.”
+
+
+In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code.
+
+To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager.
+
+
+
+Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret.
+
+Set up Server that Requires Authentication
+
+I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!).  Instead, we will use httpbin.org as it supports making an authenticated REST API call.
+
+Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials.
+
+Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the https://httpbin.org/#/Auth/get_basic_auth__user__passwd page.
+
+Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect.
+
+Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!)
+
+You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal.
+
+After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button.
+
+Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the Response Body and the Response Headers as well.
+
+Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the httpbin page again in an Incognito Window.
+
+Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again.
+
+This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button.
+
+Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body.
+
+NOTE: Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an intercepting proxy such as ZAP or Burp Suite. To learn how to do this, check out HITC Episode 7 -  Passively Evaluate a SaaS Provider’s AppSec using ZAP.
+
+Create client-side code to perform the authentication
+
+Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals.
+
+Python uses libraries that can be imported as needed, and these are called “modules.” The Requests module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests.
+
+Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication.
+
+In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”).
+
+Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button.
+
+Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again.
+
+Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button.
+
+Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior.
+Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code.
+
+Now, for the cool part!
+
+Select “Python” from the “Generate Code” dropdown.
+
+Check it out. This tool even generated the basic code for us!! Let’s try it out.
+Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step.
+
+vim authMe.py
+
+
+Save the file and run it using the following command:
+
+python3 authMe.py
+
+
+We should get a value of “200” returned by the program.
+Let’s make one little tweak to the code. Lets have it print the Response Body too.
+
+echo "print(resp.content)" &gt;&gt; authMe.py
+
+
+And rerun it:
+
+python3 authMe.py
+
+
+We should see something like:
+
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+
+
+Look familiar? Recall that \n is the linefeed escape character.
+
+Take another look at the python code. Notice the string SElUQzoxMjM0NTY=
+
+What is that? HINT: it is NOT encrypted?
+
+It is a Base64 encoded value. Let’s decode it.
+
+echo "SElUQzoxMjM0NTY=" | base64 -d
+
+
+Ah ha! Our credentials are HITC:123456.
+
+What happens if we change the credentials that we have our python program use?
+
+echo "HITC:qwerty" | base64
+
+
+That returns a base64 encoded value of SElUQzpxd2VydHkK
+Let’s use that in a copy of our program called “authMeNot.py”
+
+cp authMe.py authMeNot.py
+sed -i 's/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/' authMeNot.py
+cat authMeNot.py
+
+
+When we run it,
+
+python3 authMeNot.py
+
+
+We can see what an authentication failure looks like:
+
+401
+b''
+
+
+Configure GCP Secret Manager
+
+Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote.
+
+Log in to the GCP console and create a new project called “HITC.”
+
+In the search bar, enter “secret manager” and click on the Secret Manager link at the top of the results. Make sure that the “HITC” project has been selected.
+
+Enable the API and click the “CREATE SECRET” button.
+Now we need to decide on a name. How about httpbin_auth?
+
+Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code.
+
+In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator.
+
+Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button
+
+Our next step is to create a service account with the permission to read the secret.
+Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project.
+
+Click the “CREATE SERVICE ACCOUNT” button
+Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description.
+
+Click the “CREATE AND CONTINUE” button and then click “Done.”
+
+Click on the name of the service account to open the details page. Now click the “KEYS” tab.
+
+Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example:
+
+/home/ken/workspace/hitc-319517-4d18c7f446cb.json
+
+
+While we are here, let’s copy the email address of the service account that we just created.
+
+Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created.
+
+Click on the “httpbin_auth” secret to open the details.
+
+Click on the PERMISSIONS tab and then the ADD button.
+
+In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it.
+
+While you are here, lets make a note of the Resource ID of the secret. It will be of the form…
+
+projects/859548834922/secrets/httpbin_auth
+
+
+…except your digits will be different than mine.
+
+Create a Virtual Machine
+
+Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button.
+
+We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance.
+
+Once the instance is running, let’s connect to it using “SSH from the browser”
+
+Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal:
+
+sudo apt update -y &amp;&amp; sudo apt upgrade -y
+sudo apt install -y python3-pip
+python3 -m pip install --upgrade pip
+python3 -m pip install google-cloud-secret-manager
+
+
+Notice that the last command installs the python module for interacting with Secret manager.
+
+Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do.
+
+Just as a sanity check, let’s run the authMe.py on the new VM.
+
+python3 authMe.py
+
+
+Works great. Now to make our modifications.
+First, lets fork our code to a different file name:
+
+cp authMe.py authMeSM.py
+
+
+Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3:
+
+from google.cloud import secretmanager
+
+def fetchSecret():
+    client = secretmanager.SecretManagerServiceClient()
+    name = "{SECRET RESOURCE ID}/versions/latest"
+    response = client.access_secret_version(name=name)
+    payload = response.payload.data.decode("UTF-8")
+    return payload
+
+
+Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier.
+
+Next, we need to modify the line that contains headers["Authorization"] = "Basic SElUQzoxMjM0NTY=" to read headers["Authorization"] = "Basic " + fetchSecret()
+
+Note that there is a single space before the double quote after the word Basic.
+
+After saving our changes, we can run the script to see if it works:
+
+$ python3 authMeSM.py
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+
+
+It does!! Whoohoo
+
+Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine?
+
+Yes, and that is where that JSON Key file that we downloaded.
+
+First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick.
+
+But what happens when we run it?
+
+It throws an error because there are no credentials that can fetch the secret from Google Secret Manager.
+
+Don’t despair 😊 let’s read the last bit of the error message:
+
+
+  google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started
+
+
+When we go to the referenced URL (https://cloud.google.com/docs/authentication/getting-started), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?)
+
+So for me, that would be /home/ken/workspace/hitc-319517-4d18c7f446cb.json so I would run:
+
+export GOOGLE_APPLICATION_CREDENTIALS="/home/ken/workspace/hitc-319517-4d18c7f446cb.json"
+
+
+And now when we run python3 authMeSM.py it will successfully authenticate.
+
+Wrap Up
+
+Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 8 - Programmatically Access Google Cloud’s Secret Manager">
+<meta name="twitter:description" content="8 - Programmatically Access Google Cloud’s Secret Manager
+
+
+
+Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Programmatically Access Google Secret Manager”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system!
+
+In fact, the Cloud Security Alliance identified this as Top Threat No. 4 in their “Top Threats to Cloud Computing - The Egregious 11” publication.
+
+
+  “Credentials and cryptographic keys must not be embedded in source code or distributed
+in public facing repositories (such as GitHub) because there is a high risk of discovery
+and misuse. Keys need to be appropriately secured with a well-secured public key
+infrastructure (PKI) to ensure key management activities are carried out.”
+
+
+In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code.
+
+To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager.
+
+
+
+Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret.
+
+Set up Server that Requires Authentication
+
+I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!).  Instead, we will use httpbin.org as it supports making an authenticated REST API call.
+
+Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials.
+
+Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the https://httpbin.org/#/Auth/get_basic_auth__user__passwd page.
+
+Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect.
+
+Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!)
+
+You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal.
+
+After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button.
+
+Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the Response Body and the Response Headers as well.
+
+Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the httpbin page again in an Incognito Window.
+
+Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again.
+
+This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button.
+
+Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body.
+
+NOTE: Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an intercepting proxy such as ZAP or Burp Suite. To learn how to do this, check out HITC Episode 7 -  Passively Evaluate a SaaS Provider’s AppSec using ZAP.
+
+Create client-side code to perform the authentication
+
+Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals.
+
+Python uses libraries that can be imported as needed, and these are called “modules.” The Requests module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests.
+
+Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication.
+
+In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”).
+
+Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button.
+
+Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again.
+
+Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button.
+
+Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior.
+Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code.
+
+Now, for the cool part!
+
+Select “Python” from the “Generate Code” dropdown.
+
+Check it out. This tool even generated the basic code for us!! Let’s try it out.
+Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step.
+
+vim authMe.py
+
+
+Save the file and run it using the following command:
+
+python3 authMe.py
+
+
+We should get a value of “200” returned by the program.
+Let’s make one little tweak to the code. Lets have it print the Response Body too.
+
+echo "print(resp.content)" &gt;&gt; authMe.py
+
+
+And rerun it:
+
+python3 authMe.py
+
+
+We should see something like:
+
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+
+
+Look familiar? Recall that \n is the linefeed escape character.
+
+Take another look at the python code. Notice the string SElUQzoxMjM0NTY=
+
+What is that? HINT: it is NOT encrypted?
+
+It is a Base64 encoded value. Let’s decode it.
+
+echo "SElUQzoxMjM0NTY=" | base64 -d
+
+
+Ah ha! Our credentials are HITC:123456.
+
+What happens if we change the credentials that we have our python program use?
+
+echo "HITC:qwerty" | base64
+
+
+That returns a base64 encoded value of SElUQzpxd2VydHkK
+Let’s use that in a copy of our program called “authMeNot.py”
+
+cp authMe.py authMeNot.py
+sed -i 's/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/' authMeNot.py
+cat authMeNot.py
+
+
+When we run it,
+
+python3 authMeNot.py
+
+
+We can see what an authentication failure looks like:
+
+401
+b''
+
+
+Configure GCP Secret Manager
+
+Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote.
+
+Log in to the GCP console and create a new project called “HITC.”
+
+In the search bar, enter “secret manager” and click on the Secret Manager link at the top of the results. Make sure that the “HITC” project has been selected.
+
+Enable the API and click the “CREATE SECRET” button.
+Now we need to decide on a name. How about httpbin_auth?
+
+Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code.
+
+In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator.
+
+Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button
+
+Our next step is to create a service account with the permission to read the secret.
+Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project.
+
+Click the “CREATE SERVICE ACCOUNT” button
+Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description.
+
+Click the “CREATE AND CONTINUE” button and then click “Done.”
+
+Click on the name of the service account to open the details page. Now click the “KEYS” tab.
+
+Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example:
+
+/home/ken/workspace/hitc-319517-4d18c7f446cb.json
+
+
+While we are here, let’s copy the email address of the service account that we just created.
+
+Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created.
+
+Click on the “httpbin_auth” secret to open the details.
+
+Click on the PERMISSIONS tab and then the ADD button.
+
+In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it.
+
+While you are here, lets make a note of the Resource ID of the secret. It will be of the form…
+
+projects/859548834922/secrets/httpbin_auth
+
+
+…except your digits will be different than mine.
+
+Create a Virtual Machine
+
+Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button.
+
+We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance.
+
+Once the instance is running, let’s connect to it using “SSH from the browser”
+
+Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal:
+
+sudo apt update -y &amp;&amp; sudo apt upgrade -y
+sudo apt install -y python3-pip
+python3 -m pip install --upgrade pip
+python3 -m pip install google-cloud-secret-manager
+
+
+Notice that the last command installs the python module for interacting with Secret manager.
+
+Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do.
+
+Just as a sanity check, let’s run the authMe.py on the new VM.
+
+python3 authMe.py
+
+
+Works great. Now to make our modifications.
+First, lets fork our code to a different file name:
+
+cp authMe.py authMeSM.py
+
+
+Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3:
+
+from google.cloud import secretmanager
+
+def fetchSecret():
+    client = secretmanager.SecretManagerServiceClient()
+    name = "{SECRET RESOURCE ID}/versions/latest"
+    response = client.access_secret_version(name=name)
+    payload = response.payload.data.decode("UTF-8")
+    return payload
+
+
+Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier.
+
+Next, we need to modify the line that contains headers["Authorization"] = "Basic SElUQzoxMjM0NTY=" to read headers["Authorization"] = "Basic " + fetchSecret()
+
+Note that there is a single space before the double quote after the word Basic.
+
+After saving our changes, we can run the script to see if it works:
+
+$ python3 authMeSM.py
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+
+
+It does!! Whoohoo
+
+Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine?
+
+Yes, and that is where that JSON Key file that we downloaded.
+
+First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick.
+
+But what happens when we run it?
+
+It throws an error because there are no credentials that can fetch the secret from Google Secret Manager.
+
+Don’t despair 😊 let’s read the last bit of the error message:
+
+
+  google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started
+
+
+When we go to the referenced URL (https://cloud.google.com/docs/authentication/getting-started), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?)
+
+So for me, that would be /home/ken/workspace/hitc-319517-4d18c7f446cb.json so I would run:
+
+export GOOGLE_APPLICATION_CREDENTIALS="/home/ken/workspace/hitc-319517-4d18c7f446cb.json"
+
+
+And now when we run python3 authMeSM.py it will successfully authenticate.
+
+Wrap Up
+
+Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 8 - Programmatically Access Google Cloud’s Secret Manager">
+<meta property="og:description" content="8 - Programmatically Access Google Cloud’s Secret Manager
+
+
+
+Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Programmatically Access Google Secret Manager”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system!
+
+In fact, the Cloud Security Alliance identified this as Top Threat No. 4 in their “Top Threats to Cloud Computing - The Egregious 11” publication.
+
+
+  “Credentials and cryptographic keys must not be embedded in source code or distributed
+in public facing repositories (such as GitHub) because there is a high risk of discovery
+and misuse. Keys need to be appropriately secured with a well-secured public key
+infrastructure (PKI) to ensure key management activities are carried out.”
+
+
+In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code.
+
+To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager.
+
+
+
+Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret.
+
+Set up Server that Requires Authentication
+
+I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!).  Instead, we will use httpbin.org as it supports making an authenticated REST API call.
+
+Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials.
+
+Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the https://httpbin.org/#/Auth/get_basic_auth__user__passwd page.
+
+Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect.
+
+Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!)
+
+You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal.
+
+After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button.
+
+Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the Response Body and the Response Headers as well.
+
+Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the httpbin page again in an Incognito Window.
+
+Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again.
+
+This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button.
+
+Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body.
+
+NOTE: Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an intercepting proxy such as ZAP or Burp Suite. To learn how to do this, check out HITC Episode 7 -  Passively Evaluate a SaaS Provider’s AppSec using ZAP.
+
+Create client-side code to perform the authentication
+
+Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals.
+
+Python uses libraries that can be imported as needed, and these are called “modules.” The Requests module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests.
+
+Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication.
+
+In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”).
+
+Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button.
+
+Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again.
+
+Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button.
+
+Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior.
+Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code.
+
+Now, for the cool part!
+
+Select “Python” from the “Generate Code” dropdown.
+
+Check it out. This tool even generated the basic code for us!! Let’s try it out.
+Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step.
+
+vim authMe.py
+
+
+Save the file and run it using the following command:
+
+python3 authMe.py
+
+
+We should get a value of “200” returned by the program.
+Let’s make one little tweak to the code. Lets have it print the Response Body too.
+
+echo "print(resp.content)" &gt;&gt; authMe.py
+
+
+And rerun it:
+
+python3 authMe.py
+
+
+We should see something like:
+
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+
+
+Look familiar? Recall that \n is the linefeed escape character.
+
+Take another look at the python code. Notice the string SElUQzoxMjM0NTY=
+
+What is that? HINT: it is NOT encrypted?
+
+It is a Base64 encoded value. Let’s decode it.
+
+echo "SElUQzoxMjM0NTY=" | base64 -d
+
+
+Ah ha! Our credentials are HITC:123456.
+
+What happens if we change the credentials that we have our python program use?
+
+echo "HITC:qwerty" | base64
+
+
+That returns a base64 encoded value of SElUQzpxd2VydHkK
+Let’s use that in a copy of our program called “authMeNot.py”
+
+cp authMe.py authMeNot.py
+sed -i 's/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/' authMeNot.py
+cat authMeNot.py
+
+
+When we run it,
+
+python3 authMeNot.py
+
+
+We can see what an authentication failure looks like:
+
+401
+b''
+
+
+Configure GCP Secret Manager
+
+Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote.
+
+Log in to the GCP console and create a new project called “HITC.”
+
+In the search bar, enter “secret manager” and click on the Secret Manager link at the top of the results. Make sure that the “HITC” project has been selected.
+
+Enable the API and click the “CREATE SECRET” button.
+Now we need to decide on a name. How about httpbin_auth?
+
+Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code.
+
+In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator.
+
+Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button
+
+Our next step is to create a service account with the permission to read the secret.
+Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project.
+
+Click the “CREATE SERVICE ACCOUNT” button
+Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description.
+
+Click the “CREATE AND CONTINUE” button and then click “Done.”
+
+Click on the name of the service account to open the details page. Now click the “KEYS” tab.
+
+Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example:
+
+/home/ken/workspace/hitc-319517-4d18c7f446cb.json
+
+
+While we are here, let’s copy the email address of the service account that we just created.
+
+Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created.
+
+Click on the “httpbin_auth” secret to open the details.
+
+Click on the PERMISSIONS tab and then the ADD button.
+
+In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it.
+
+While you are here, lets make a note of the Resource ID of the secret. It will be of the form…
+
+projects/859548834922/secrets/httpbin_auth
+
+
+…except your digits will be different than mine.
+
+Create a Virtual Machine
+
+Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button.
+
+We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance.
+
+Once the instance is running, let’s connect to it using “SSH from the browser”
+
+Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal:
+
+sudo apt update -y &amp;&amp; sudo apt upgrade -y
+sudo apt install -y python3-pip
+python3 -m pip install --upgrade pip
+python3 -m pip install google-cloud-secret-manager
+
+
+Notice that the last command installs the python module for interacting with Secret manager.
+
+Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do.
+
+Just as a sanity check, let’s run the authMe.py on the new VM.
+
+python3 authMe.py
+
+
+Works great. Now to make our modifications.
+First, lets fork our code to a different file name:
+
+cp authMe.py authMeSM.py
+
+
+Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3:
+
+from google.cloud import secretmanager
+
+def fetchSecret():
+    client = secretmanager.SecretManagerServiceClient()
+    name = "{SECRET RESOURCE ID}/versions/latest"
+    response = client.access_secret_version(name=name)
+    payload = response.payload.data.decode("UTF-8")
+    return payload
+
+
+Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier.
+
+Next, we need to modify the line that contains headers["Authorization"] = "Basic SElUQzoxMjM0NTY=" to read headers["Authorization"] = "Basic " + fetchSecret()
+
+Note that there is a single space before the double quote after the word Basic.
+
+After saving our changes, we can run the script to see if it works:
+
+$ python3 authMeSM.py
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+
+
+It does!! Whoohoo
+
+Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine?
+
+Yes, and that is where that JSON Key file that we downloaded.
+
+First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick.
+
+But what happens when we run it?
+
+It throws an error because there are no credentials that can fetch the secret from Google Secret Manager.
+
+Don’t despair 😊 let’s read the last bit of the error message:
+
+
+  google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started
+
+
+When we go to the referenced URL (https://cloud.google.com/docs/authentication/getting-started), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?)
+
+So for me, that would be /home/ken/workspace/hitc-319517-4d18c7f446cb.json so I would run:
+
+export GOOGLE_APPLICATION_CREDENTIALS="/home/ken/workspace/hitc-319517-4d18c7f446cb.json"
+
+
+And now when we run python3 authMeSM.py it will successfully authenticate.
+
+Wrap Up
+
+Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta property="og:url" content="/episodes/episode08/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode08/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 8 - Programmatically Access Google Cloud’s Secret Manager | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 8 - Programmatically Access Google Cloud’s Secret Manager" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="8 - Programmatically Access Google Cloud’s Secret Manager Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Programmatically Access Google Secret Manager” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system! In fact, the Cloud Security Alliance identified this as Top Threat No. 4 in their “Top Threats to Cloud Computing - The Egregious 11” publication. “Credentials and cryptographic keys must not be embedded in source code or distributed in public facing repositories (such as GitHub) because there is a high risk of discovery and misuse. Keys need to be appropriately secured with a well-secured public key infrastructure (PKI) to ensure key management activities are carried out.” In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code. To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager. Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret. Set up Server that Requires Authentication I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!). Instead, we will use httpbin.org as it supports making an authenticated REST API call. Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials. Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the https://httpbin.org/#/Auth/get_basic_auth__user__passwd page. Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect. Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!) You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal. After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button. Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the Response Body and the Response Headers as well. Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the httpbin page again in an Incognito Window. Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again. This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button. Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body. NOTE: Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an intercepting proxy such as ZAP or Burp Suite. To learn how to do this, check out HITC Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP. Create client-side code to perform the authentication Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals. Python uses libraries that can be imported as needed, and these are called “modules.” The Requests module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests. Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication. In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”). Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button. Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again. Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button. Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior. Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code. Now, for the cool part! Select “Python” from the “Generate Code” dropdown. Check it out. This tool even generated the basic code for us!! Let’s try it out. Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step. vim authMe.py Save the file and run it using the following command: python3 authMe.py We should get a value of “200” returned by the program. Let’s make one little tweak to the code. Lets have it print the Response Body too. echo &quot;print(resp.content)&quot; &gt;&gt; authMe.py And rerun it: python3 authMe.py We should see something like: 200 b&#39;{\n &quot;authenticated&quot;: true, \n &quot;user&quot;: &quot;HITC&quot;\n}\n&#39; Look familiar? Recall that \n is the linefeed escape character. Take another look at the python code. Notice the string SElUQzoxMjM0NTY= What is that? HINT: it is NOT encrypted? It is a Base64 encoded value. Let’s decode it. echo &quot;SElUQzoxMjM0NTY=&quot; | base64 -d Ah ha! Our credentials are HITC:123456. What happens if we change the credentials that we have our python program use? echo &quot;HITC:qwerty&quot; | base64 That returns a base64 encoded value of SElUQzpxd2VydHkK Let’s use that in a copy of our program called “authMeNot.py” cp authMe.py authMeNot.py sed -i &#39;s/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/&#39; authMeNot.py cat authMeNot.py When we run it, python3 authMeNot.py We can see what an authentication failure looks like: 401 b&#39;&#39; Configure GCP Secret Manager Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote. Log in to the GCP console and create a new project called “HITC.” In the search bar, enter “secret manager” and click on the Secret Manager link at the top of the results. Make sure that the “HITC” project has been selected. Enable the API and click the “CREATE SECRET” button. Now we need to decide on a name. How about httpbin_auth? Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code. In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator. Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button Our next step is to create a service account with the permission to read the secret. Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project. Click the “CREATE SERVICE ACCOUNT” button Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description. Click the “CREATE AND CONTINUE” button and then click “Done.” Click on the name of the service account to open the details page. Now click the “KEYS” tab. Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example: /home/ken/workspace/hitc-319517-4d18c7f446cb.json While we are here, let’s copy the email address of the service account that we just created. Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created. Click on the “httpbin_auth” secret to open the details. Click on the PERMISSIONS tab and then the ADD button. In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it. While you are here, lets make a note of the Resource ID of the secret. It will be of the form… projects/859548834922/secrets/httpbin_auth …except your digits will be different than mine. Create a Virtual Machine Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button. We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance. Once the instance is running, let’s connect to it using “SSH from the browser” Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal: sudo apt update -y &amp;&amp; sudo apt upgrade -y sudo apt install -y python3-pip python3 -m pip install --upgrade pip python3 -m pip install google-cloud-secret-manager Notice that the last command installs the python module for interacting with Secret manager. Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do. Just as a sanity check, let’s run the authMe.py on the new VM. python3 authMe.py Works great. Now to make our modifications. First, lets fork our code to a different file name: cp authMe.py authMeSM.py Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3: from google.cloud import secretmanager def fetchSecret(): client = secretmanager.SecretManagerServiceClient() name = &quot;{SECRET RESOURCE ID}/versions/latest&quot; response = client.access_secret_version(name=name) payload = response.payload.data.decode(&quot;UTF-8&quot;) return payload Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier. Next, we need to modify the line that contains headers[&quot;Authorization&quot;] = &quot;Basic SElUQzoxMjM0NTY=&quot; to read headers[&quot;Authorization&quot;] = &quot;Basic &quot; + fetchSecret() Note that there is a single space before the double quote after the word Basic. After saving our changes, we can run the script to see if it works: $ python3 authMeSM.py 200 b&#39;{\n &quot;authenticated&quot;: true, \n &quot;user&quot;: &quot;HITC&quot;\n}\n&#39; It does!! Whoohoo Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine? Yes, and that is where that JSON Key file that we downloaded. First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick. But what happens when we run it? It throws an error because there are no credentials that can fetch the secret from Google Secret Manager. Don’t despair 😊 let’s read the last bit of the error message: google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started When we go to the referenced URL (https://cloud.google.com/docs/authentication/getting-started), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?) So for me, that would be /home/ken/workspace/hitc-319517-4d18c7f446cb.json so I would run: export GOOGLE_APPLICATION_CREDENTIALS=&quot;/home/ken/workspace/hitc-319517-4d18c7f446cb.json&quot; And now when we run python3 authMeSM.py it will successfully authenticate. Wrap Up Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<meta property="og:description" content="8 - Programmatically Access Google Cloud’s Secret Manager Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Programmatically Access Google Secret Manager” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system! In fact, the Cloud Security Alliance identified this as Top Threat No. 4 in their “Top Threats to Cloud Computing - The Egregious 11” publication. “Credentials and cryptographic keys must not be embedded in source code or distributed in public facing repositories (such as GitHub) because there is a high risk of discovery and misuse. Keys need to be appropriately secured with a well-secured public key infrastructure (PKI) to ensure key management activities are carried out.” In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code. To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager. Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret. Set up Server that Requires Authentication I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!). Instead, we will use httpbin.org as it supports making an authenticated REST API call. Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials. Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the https://httpbin.org/#/Auth/get_basic_auth__user__passwd page. Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect. Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!) You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal. After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button. Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the Response Body and the Response Headers as well. Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the httpbin page again in an Incognito Window. Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again. This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button. Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body. NOTE: Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an intercepting proxy such as ZAP or Burp Suite. To learn how to do this, check out HITC Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP. Create client-side code to perform the authentication Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals. Python uses libraries that can be imported as needed, and these are called “modules.” The Requests module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests. Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication. In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”). Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button. Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again. Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button. Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior. Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code. Now, for the cool part! Select “Python” from the “Generate Code” dropdown. Check it out. This tool even generated the basic code for us!! Let’s try it out. Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step. vim authMe.py Save the file and run it using the following command: python3 authMe.py We should get a value of “200” returned by the program. Let’s make one little tweak to the code. Lets have it print the Response Body too. echo &quot;print(resp.content)&quot; &gt;&gt; authMe.py And rerun it: python3 authMe.py We should see something like: 200 b&#39;{\n &quot;authenticated&quot;: true, \n &quot;user&quot;: &quot;HITC&quot;\n}\n&#39; Look familiar? Recall that \n is the linefeed escape character. Take another look at the python code. Notice the string SElUQzoxMjM0NTY= What is that? HINT: it is NOT encrypted? It is a Base64 encoded value. Let’s decode it. echo &quot;SElUQzoxMjM0NTY=&quot; | base64 -d Ah ha! Our credentials are HITC:123456. What happens if we change the credentials that we have our python program use? echo &quot;HITC:qwerty&quot; | base64 That returns a base64 encoded value of SElUQzpxd2VydHkK Let’s use that in a copy of our program called “authMeNot.py” cp authMe.py authMeNot.py sed -i &#39;s/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/&#39; authMeNot.py cat authMeNot.py When we run it, python3 authMeNot.py We can see what an authentication failure looks like: 401 b&#39;&#39; Configure GCP Secret Manager Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote. Log in to the GCP console and create a new project called “HITC.” In the search bar, enter “secret manager” and click on the Secret Manager link at the top of the results. Make sure that the “HITC” project has been selected. Enable the API and click the “CREATE SECRET” button. Now we need to decide on a name. How about httpbin_auth? Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code. In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator. Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button Our next step is to create a service account with the permission to read the secret. Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project. Click the “CREATE SERVICE ACCOUNT” button Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description. Click the “CREATE AND CONTINUE” button and then click “Done.” Click on the name of the service account to open the details page. Now click the “KEYS” tab. Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example: /home/ken/workspace/hitc-319517-4d18c7f446cb.json While we are here, let’s copy the email address of the service account that we just created. Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created. Click on the “httpbin_auth” secret to open the details. Click on the PERMISSIONS tab and then the ADD button. In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it. While you are here, lets make a note of the Resource ID of the secret. It will be of the form… projects/859548834922/secrets/httpbin_auth …except your digits will be different than mine. Create a Virtual Machine Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button. We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance. Once the instance is running, let’s connect to it using “SSH from the browser” Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal: sudo apt update -y &amp;&amp; sudo apt upgrade -y sudo apt install -y python3-pip python3 -m pip install --upgrade pip python3 -m pip install google-cloud-secret-manager Notice that the last command installs the python module for interacting with Secret manager. Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do. Just as a sanity check, let’s run the authMe.py on the new VM. python3 authMe.py Works great. Now to make our modifications. First, lets fork our code to a different file name: cp authMe.py authMeSM.py Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3: from google.cloud import secretmanager def fetchSecret(): client = secretmanager.SecretManagerServiceClient() name = &quot;{SECRET RESOURCE ID}/versions/latest&quot; response = client.access_secret_version(name=name) payload = response.payload.data.decode(&quot;UTF-8&quot;) return payload Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier. Next, we need to modify the line that contains headers[&quot;Authorization&quot;] = &quot;Basic SElUQzoxMjM0NTY=&quot; to read headers[&quot;Authorization&quot;] = &quot;Basic &quot; + fetchSecret() Note that there is a single space before the double quote after the word Basic. After saving our changes, we can run the script to see if it works: $ python3 authMeSM.py 200 b&#39;{\n &quot;authenticated&quot;: true, \n &quot;user&quot;: &quot;HITC&quot;\n}\n&#39; It does!! Whoohoo Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine? Yes, and that is where that JSON Key file that we downloaded. First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick. But what happens when we run it? It throws an error because there are no credentials that can fetch the secret from Google Secret Manager. Don’t despair 😊 let’s read the last bit of the error message: google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started When we go to the referenced URL (https://cloud.google.com/docs/authentication/getting-started), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?) So for me, that would be /home/ken/workspace/hitc-319517-4d18c7f446cb.json so I would run: export GOOGLE_APPLICATION_CREDENTIALS=&quot;/home/ken/workspace/hitc-319517-4d18c7f446cb.json&quot; And now when we run python3 authMeSM.py it will successfully authenticate. Wrap Up Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode08/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode08/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 8 - Programmatically Access Google Cloud’s Secret Manager" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:39-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"8 - Programmatically Access Google Cloud’s Secret Manager Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Programmatically Access Google Secret Manager” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system! In fact, the Cloud Security Alliance identified this as Top Threat No. 4 in their “Top Threats to Cloud Computing - The Egregious 11” publication. “Credentials and cryptographic keys must not be embedded in source code or distributed in public facing repositories (such as GitHub) because there is a high risk of discovery and misuse. Keys need to be appropriately secured with a well-secured public key infrastructure (PKI) to ensure key management activities are carried out.” In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code. To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager. Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret. Set up Server that Requires Authentication I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!). Instead, we will use httpbin.org as it supports making an authenticated REST API call. Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials. Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the https://httpbin.org/#/Auth/get_basic_auth__user__passwd page. Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect. Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!) You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal. After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button. Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the Response Body and the Response Headers as well. Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the httpbin page again in an Incognito Window. Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again. This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button. Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body. NOTE: Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an intercepting proxy such as ZAP or Burp Suite. To learn how to do this, check out HITC Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP. Create client-side code to perform the authentication Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals. Python uses libraries that can be imported as needed, and these are called “modules.” The Requests module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests. Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication. In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”). Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button. Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again. Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button. Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior. Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code. Now, for the cool part! Select “Python” from the “Generate Code” dropdown. Check it out. This tool even generated the basic code for us!! Let’s try it out. Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step. vim authMe.py Save the file and run it using the following command: python3 authMe.py We should get a value of “200” returned by the program. Let’s make one little tweak to the code. Lets have it print the Response Body too. echo &quot;print(resp.content)&quot; &gt;&gt; authMe.py And rerun it: python3 authMe.py We should see something like: 200 b&#39;{\\n &quot;authenticated&quot;: true, \\n &quot;user&quot;: &quot;HITC&quot;\\n}\\n&#39; Look familiar? Recall that \\n is the linefeed escape character. Take another look at the python code. Notice the string SElUQzoxMjM0NTY= What is that? HINT: it is NOT encrypted? It is a Base64 encoded value. Let’s decode it. echo &quot;SElUQzoxMjM0NTY=&quot; | base64 -d Ah ha! Our credentials are HITC:123456. What happens if we change the credentials that we have our python program use? echo &quot;HITC:qwerty&quot; | base64 That returns a base64 encoded value of SElUQzpxd2VydHkK Let’s use that in a copy of our program called “authMeNot.py” cp authMe.py authMeNot.py sed -i &#39;s/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/&#39; authMeNot.py cat authMeNot.py When we run it, python3 authMeNot.py We can see what an authentication failure looks like: 401 b&#39;&#39; Configure GCP Secret Manager Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote. Log in to the GCP console and create a new project called “HITC.” In the search bar, enter “secret manager” and click on the Secret Manager link at the top of the results. Make sure that the “HITC” project has been selected. Enable the API and click the “CREATE SECRET” button. Now we need to decide on a name. How about httpbin_auth? Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code. In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator. Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button Our next step is to create a service account with the permission to read the secret. Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project. Click the “CREATE SERVICE ACCOUNT” button Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description. Click the “CREATE AND CONTINUE” button and then click “Done.” Click on the name of the service account to open the details page. Now click the “KEYS” tab. Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example: /home/ken/workspace/hitc-319517-4d18c7f446cb.json While we are here, let’s copy the email address of the service account that we just created. Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created. Click on the “httpbin_auth” secret to open the details. Click on the PERMISSIONS tab and then the ADD button. In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it. While you are here, lets make a note of the Resource ID of the secret. It will be of the form… projects/859548834922/secrets/httpbin_auth …except your digits will be different than mine. Create a Virtual Machine Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button. We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance. Once the instance is running, let’s connect to it using “SSH from the browser” Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal: sudo apt update -y &amp;&amp; sudo apt upgrade -y sudo apt install -y python3-pip python3 -m pip install --upgrade pip python3 -m pip install google-cloud-secret-manager Notice that the last command installs the python module for interacting with Secret manager. Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do. Just as a sanity check, let’s run the authMe.py on the new VM. python3 authMe.py Works great. Now to make our modifications. First, lets fork our code to a different file name: cp authMe.py authMeSM.py Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3: from google.cloud import secretmanager def fetchSecret(): client = secretmanager.SecretManagerServiceClient() name = &quot;{SECRET RESOURCE ID}/versions/latest&quot; response = client.access_secret_version(name=name) payload = response.payload.data.decode(&quot;UTF-8&quot;) return payload Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier. Next, we need to modify the line that contains headers[&quot;Authorization&quot;] = &quot;Basic SElUQzoxMjM0NTY=&quot; to read headers[&quot;Authorization&quot;] = &quot;Basic &quot; + fetchSecret() Note that there is a single space before the double quote after the word Basic. After saving our changes, we can run the script to see if it works: $ python3 authMeSM.py 200 b&#39;{\\n &quot;authenticated&quot;: true, \\n &quot;user&quot;: &quot;HITC&quot;\\n}\\n&#39; It does!! Whoohoo Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine? Yes, and that is where that JSON Key file that we downloaded. First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick. But what happens when we run it? It throws an error because there are no credentials that can fetch the secret from Google Secret Manager. Don’t despair 😊 let’s read the last bit of the error message: google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started When we go to the referenced URL (https://cloud.google.com/docs/authentication/getting-started), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?) So for me, that would be /home/ken/workspace/hitc-319517-4d18c7f446cb.json so I would run: export GOOGLE_APPLICATION_CREDENTIALS=&quot;/home/ken/workspace/hitc-319517-4d18c7f446cb.json&quot; And now when we run python3 authMeSM.py it will successfully authenticate. Wrap Up Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care.","headline":"Episode 8 - Programmatically Access Google Cloud’s Secret Manager","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode08/"},"url":"http://localhost:4000/episodes/episode08/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 8 - Programmatically Access Google Cloud’s Secret Manager</h1>
+    <div class="article-wrap">
+      <p>8 - Programmatically Access Google Cloud’s Secret Manager</p>
+
+<div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/rUWXB5t76yY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to Episode 8 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “Programmatically Access Google Secret Manager”</p>
+
+<p>The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.</p>
+
+<p>Today’s topic draws from some recent private consulting work. I wrote some automation to authenticate to a SaaS application and download a backup file. The proper protection of the authentication secret is a primary concern because an attacker with the authentication secret could impersonate the backup service and download all of the data in the system!</p>
+
+<p>In fact, the Cloud Security Alliance identified this as <strong>Top Threat No. 4</strong> in their <a href="https://cloudsecurityalliance.org/artifacts/top-threats-to-cloud-computing-egregious-eleven/">“Top Threats to Cloud Computing - The Egregious 11” publication</a>.</p>
+
+<blockquote>
+  <p>“Credentials and cryptographic keys must not be embedded in source code or distributed
+in public facing repositories (such as GitHub) because there is a high risk of discovery
+and misuse. Keys need to be appropriately secured with a well-secured public key
+infrastructure (PKI) to ensure key management activities are carried out.”</p>
+</blockquote>
+
+<p>In my case, even though the code was to be stored in a private repository, I intended to follow the best practice of keeping the secret out of the source code.</p>
+
+<p>To set up the scenario for this HITC session, we need a web application to authenticate to and then we need to write some code for the client-side service to use to perform the authentication. Once that is working, we will refactor our code to pull the authentication secret from the GCP Secrets Manager.</p>
+
+<p><img src="/images/ep8/EP8-Agenda.png" alt="HITC Episode 8 Agenda" /></p>
+
+<p>Setting up Secrets Manager involves adding a secret version and creating a service account with permissions to read just that particular secret.</p>
+
+<h2 id="set-up-server-that-requires-authentication">Set up Server that Requires Authentication</h2>
+
+<p>I considered spinning up a WordPress server for this episode, but then I remembered the KISS Principle (Keep it Simple, Stupid!).  Instead, we will use <a href="https://httpbin.org/">httpbin.org</a> as it supports making an authenticated REST API call.</p>
+
+<p>Open this page up in an “Inconigto Window” in Chrome (or the private browsing feature of your favorite browser.) We are using Incognito Mode to prevent the browser from caching the credentials.</p>
+
+<p>Expand the Auth Methods, and then click the top one, “basic-auth.” This will take you to the <a href="https://httpbin.org/#/Auth/get_basic_auth__user___passwd_">https://httpbin.org/#/Auth/get_basic_auth__user__<em>passwd</em></a> page.</p>
+
+<p>Next, click the “Try it out” button. This will open up a form for us to configure the Username and Password strings that the server will expect.</p>
+
+<p>Enter “HITC” for the Username and “123456” for the password. (I know, I know, it’s a terrible password, but I couldn’t think of a worse one!)</p>
+
+<p>You may have also noticed that the cleartext password is in the URL. You can ignore that as that is simply how httpbin.org keeps its configuration without requiring users to login and create profiles for testing REST API Requests. Of course, if this was a production system, that would be a big deal.</p>
+
+<p>After you have entered the two required fields, hit the “Execute” button. This will cause a form to pop-up that prompts us for the credentials that we just configured. Enter them correctly into the pop-up form and hit the “Sign in” button.</p>
+
+<p>Paging down on the web page, we can see that we received a HTTP Response Code of “200” which indicates a successful authentication for this server. The web page also shows the <strong>Response Body</strong> and the <strong>Response Headers</strong> as well.</p>
+
+<p>Let’s repeat the test with invalid credentials. Close all Incognito pages to ensure that there are no cached credentials. Open the <a href="https://httpbin.org/#/Auth/get_basic_auth__user___passwd_">httpbin</a> page again in an Incognito Window.</p>
+
+<p>Now, hit the “Try it out” button once more. The previous credentials that we configured in the server should be cleared. Enter the same credentials as before, “HITC” for the Username and “123456” for the password and then click the “Execute” button again.</p>
+
+<p>This time, in the pop-up form, we will enter them incorrectly. Use “HITC” for the Username and “qwerty” for the password and then click the “Sign in” button once more. The form will let you try again, but just click the “Cancel” button.</p>
+
+<p>Note that when we scroll down the page, we can see that the HTTP Response Code is “401” and that there is not a response body.</p>
+
+<p><strong>NOTE:</strong> Different API Endpoints will behave differently. Some may return a HTTP Response Code of “200” and will indicate an authentication failure in the Response Body. It all depends on the developer. To determine how your specific web service handles authentication success and failure responses, you can use an <strong>intercepting proxy</strong> such as <a href="https://owasp.org/www-project-zap/">ZAP</a> or <a href="https://portswigger.net/burp">Burp Suite</a>. To learn how to do this, check out <a href="https://headintheclouds.site/episodes/episode7">HITC Episode 7 -  Passively Evaluate a SaaS Provider’s AppSec using ZAP</a>.</p>
+
+<h2 id="create-client-side-code-to-perform-the-authentication">Create client-side code to perform the authentication</h2>
+
+<p>Great, now that we have a server to authenticate to, we need client-side code that will successfully authenticate it. For this proof-of-concept, we will be using Python because it is a very popular language among security professionals.</p>
+
+<p>Python uses libraries that can be imported as needed, and these are called “modules.” The <strong>Requests</strong> module does most of the heavy lifting when it comes to formatting HTTP/1.1 requests.</p>
+
+<p>Fortunately for us, there is another online tool that can help us figure out the format of the GET request for the API Endpoint that we just configured in the previous section. In another browser window, check out <a href="https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication">https://reqbin.com/req/cspiws0d/get-request-with-basic-server-authentication</a>.</p>
+
+<p>In the field for the URL, there is a default value that points to “https://reqbin.com/echo/get/json” but we want to replace that with the one from the server that we just configured (“https://httpbin.org/basic-auth/HITC/123456”).</p>
+
+<p>Now, lets try it out. Select the “Basic Auth” radio button and then enter “HITC” for the Username and “123456” for the password. Click the “Send” button.</p>
+
+<p>Notice that we see four lines of Content that indicate that our authentication was successful and a HTTP Response Code of “200 (OK).” Click the “Raw” tab to see the Response Headers along with the Response Body. Click the “Content” tab again.</p>
+
+<p>Very cool. Let’s repeat the test with invalid credentials. Enter “HITC” for the Username and “qwerty” for the password. Click the “Send” button.</p>
+
+<p>Now we can see that there is no Response Body displayed in the “Content” tab and that the HTTP Response Code is “401 (UNAUTHORIZED).” We also know that from the work that we did in the previous section that this is expected behavior.
+Change the password back to “123456” and send the GET request once more. Make sure that you see the 200 Response Code.</p>
+
+<p>Now, for the cool part!</p>
+
+<p>Select “Python” from the “Generate Code” dropdown.</p>
+
+<p>Check it out. This tool even generated the basic code for us!! Let’s try it out.
+Using a Linux system with python3 installed, open a text editor with a new file called “authMe.py” and paste in the code generated by the previous step.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vim authMe.py
+</code></pre></div></div>
+
+<p>Save the file and run it using the following command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python3 authMe.py
+</code></pre></div></div>
+
+<p>We should get a value of “200” returned by the program.
+Let’s make one little tweak to the code. Lets have it print the Response Body too.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "print(resp.content)" &gt;&gt; authMe.py
+</code></pre></div></div>
+
+<p>And rerun it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python3 authMe.py
+</code></pre></div></div>
+
+<p>We should see something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+</code></pre></div></div>
+
+<p>Look familiar? Recall that <code class="language-plaintext highlighter-rouge">\n</code> is the linefeed escape character.</p>
+
+<p>Take another look at the python code. Notice the string <code class="language-plaintext highlighter-rouge">SElUQzoxMjM0NTY=</code></p>
+
+<p>What is that? HINT: it is NOT encrypted?</p>
+
+<p>It is a Base64 encoded value. Let’s decode it.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "SElUQzoxMjM0NTY=" | base64 -d
+</code></pre></div></div>
+
+<p>Ah ha! Our credentials are <code class="language-plaintext highlighter-rouge">HITC:123456</code>.</p>
+
+<p>What happens if we change the credentials that we have our python program use?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "HITC:qwerty" | base64
+</code></pre></div></div>
+
+<p>That returns a base64 encoded value of <code class="language-plaintext highlighter-rouge">SElUQzpxd2VydHkK</code>
+Let’s use that in a copy of our program called “authMeNot.py”</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cp authMe.py authMeNot.py
+sed -i 's/SElUQzoxMjM0NTY=/SElUQzpxd2VydHkK/' authMeNot.py
+cat authMeNot.py
+</code></pre></div></div>
+
+<p>When we run it,</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python3 authMeNot.py
+</code></pre></div></div>
+
+<p>We can see what an authentication failure looks like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>401
+b''
+</code></pre></div></div>
+
+<h2 id="configure-gcp-secret-manager">Configure GCP Secret Manager</h2>
+
+<p>Now that we have a simple, functional code snippet, let’s get GCP Secret Manager all set up and integrated with the code we wrote.</p>
+
+<p>Log in to the GCP console and create a new project called “HITC.”</p>
+
+<p>In the search bar, enter “secret manager” and click on the <strong>Secret Manager</strong> link at the top of the results. <strong>Make sure that the “HITC” project has been selected.</strong></p>
+
+<p>Enable the API and click the “CREATE SECRET” button.
+Now we need to decide on a name. How about <code class="language-plaintext highlighter-rouge">httpbin_auth</code>?</p>
+
+<p>Now we need to enter in the value for the secret. Here we have a choice. We can provide just the clear text password of “123456” and have the python program concatenate it to our Username and then base64 encode the concatenated result, or we can enter in the complete base64 encoded string. The later follows the KISS Principle and has the added advantage of keeping the Username out of the code.</p>
+
+<p>In a production system, most folks would store the clear text password and have the script concactenate it and encode it to make the rotation of the credentials easier on the administrator.</p>
+
+<p>Enter “SElUQzoxMjM0NTY=” as the secret value and then click the “CREATE SECRET” button</p>
+
+<p>Our next step is to create a service account with the permission to read the secret.
+Enter “service accounts” in the search bar and click the topmost link in the results. Confirm that we are still working on the “HITC” project.</p>
+
+<p>Click the “CREATE SERVICE ACCOUNT” button
+Enter the name of the service account as “hitc-service” and enter in “Proof of Concept for Episode 8” as the description.</p>
+
+<p>Click the “CREATE AND CONTINUE” button and then click “Done.”</p>
+
+<p>Click on the name of the service account to open the details page. Now click the “KEYS” tab.</p>
+
+<p>Click the “ADD KEY” dropdown and choose “Create new key.” Select the JSON radio button and then click “CREATE.” Download the key to the system that has the python programs that we were playing with earlier. Make a note of the name and full path of this JSON file. For example:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/home/ken/workspace/hitc-319517-4d18c7f446cb.json
+</code></pre></div></div>
+
+<p>While we are here, let’s copy the email address of the service account that we just created.</p>
+
+<p>Now, navigate back to Secret Manager. Next, we have to grant that service account access to the secret that we just created.</p>
+
+<p>Click on the “httpbin_auth” secret to open the details.</p>
+
+<p>Click on the PERMISSIONS tab and then the ADD button.</p>
+
+<p>In the “New Members” field, paste the “hitc-service…” email address. This email address will be displayed, click on it to select it.</p>
+
+<p>While you are here, lets make a note of the <strong>Resource ID</strong> of the secret. It will be of the form…</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>projects/859548834922/secrets/httpbin_auth
+</code></pre></div></div>
+
+<p>…except your digits will be different than mine.</p>
+
+<h2 id="create-a-virtual-machine">Create a Virtual Machine</h2>
+
+<p>Now let’s create a virtual machine. Type “VM” in the search bar and choose the “VM Instances” result. Enable the Service and click the “Create Instance” button.</p>
+
+<p>We will accept most of the defaults except, scroll down to the “Service account” dropdown list. Select “hitc-service” and then click the blue “Create” button to launch the instance.</p>
+
+<p>Once the instance is running, let’s connect to it using “SSH from the browser”</p>
+
+<p>Now we need to apply updates and any dependencies. Run the following commands at the SSH terminal:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt update -y &amp;&amp; sudo apt upgrade -y
+sudo apt install -y python3-pip
+python3 -m pip install --upgrade pip
+python3 -m pip install google-cloud-secret-manager
+</code></pre></div></div>
+
+<p>Notice that the last command installs the python module for interacting with Secret manager.</p>
+
+<p>Now, let’s copy over our authMe.py script. The easiest way to do this is to copy and paste the contents. So that is what I will do.</p>
+
+<p>Just as a sanity check, let’s run the authMe.py on the new VM.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python3 authMe.py
+</code></pre></div></div>
+
+<p>Works great. Now to make our modifications.
+First, lets fork our code to a different file name:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cp authMe.py authMeSM.py
+</code></pre></div></div>
+
+<p>Next we need to import our module to interact with Secrets manager and a function to fetch the secret. Insert the following lines at line 3:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from google.cloud import secretmanager
+
+def fetchSecret():
+    client = secretmanager.SecretManagerServiceClient()
+    name = "{SECRET RESOURCE ID}/versions/latest"
+    response = client.access_secret_version(name=name)
+    payload = response.payload.data.decode("UTF-8")
+    return payload
+</code></pre></div></div>
+
+<p>Then we need to substitute in our SECRET RESOURCE ID that we made a note of earlier.</p>
+
+<p>Next, we need to modify the line that contains <code class="language-plaintext highlighter-rouge">headers["Authorization"] = "Basic SElUQzoxMjM0NTY="</code> to read <code class="language-plaintext highlighter-rouge">headers["Authorization"] = "Basic " + fetchSecret()</code></p>
+
+<p>Note that there is a single space before the double quote after the word <em>Basic</em>.</p>
+
+<p>After saving our changes, we can run the script to see if it works:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ python3 authMeSM.py
+200
+b'{\n  "authenticated": true, \n  "user": "HITC"\n}\n'
+</code></pre></div></div>
+
+<p>It does!! Whoohoo</p>
+
+<p>Ok, but can we get this script to run on a system that is not hosted in Google Compute Engine?</p>
+
+<p>Yes, and that is where that JSON Key file that we downloaded.</p>
+
+<p>First, lets copy the authMeSM.py program back to our other Linux system, using my copy/paste trick.</p>
+
+<p>But what happens when we run it?</p>
+
+<p>It throws an error because there are no credentials that can fetch the secret from Google Secret Manager.</p>
+
+<p>Don’t despair 😊 let’s read the last bit of the error message:</p>
+
+<blockquote>
+  <p>google.auth.exceptions.DefaultCredentialsError: Could not automatically determine credentials. Please set GOOGLE_APPLICATION_CREDENTIALS or explicitly create credentials and re-run the application. For more information, please see https://cloud.google.com/docs/authentication/getting-started</p>
+</blockquote>
+
+<p>When we go to the referenced URL (<a href="https://cloud.google.com/docs/authentication/getting-started">https://cloud.google.com/docs/authentication/getting-started</a>), we read that we can sent an environment variable that points to the JSON Key file that we downloaded earlier. (Did you make note of it?)</p>
+
+<p>So for me, that would be <code class="language-plaintext highlighter-rouge">/home/ken/workspace/hitc-319517-4d18c7f446cb.json</code> so I would run:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>export GOOGLE_APPLICATION_CREDENTIALS="/home/ken/workspace/hitc-319517-4d18c7f446cb.json"
+</code></pre></div></div>
+
+<p>And now when we run <code class="language-plaintext highlighter-rouge">python3 authMeSM.py</code> it will successfully authenticate.</p>
+
+<h2 id="wrap-up">Wrap Up</h2>
+
+<p>Wonderful. Now, you know how to abstract secrets from the code that will use them to integrate with other systems. Yes, you could have set the secret as an environment variable, but then you would not have any real control over how and when that secret is accessed, like you can with a solid secret management solution, like Google’s Secret manager. And by the way, in this short episode, we have just scratched the surface of GCP Secret Manager.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode08/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode08/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode08/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

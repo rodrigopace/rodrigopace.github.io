@@ -1,0 +1,9 @@
+# Site navigation links
+- title: Home
+  url: /
+
+- title: All Episodes
+  url: /episodes/
+
+- title: SANS CyberSec Courses & Certs
+  url: https://www.sans.org/cyber-security-courses/?focus-area=cloud-security

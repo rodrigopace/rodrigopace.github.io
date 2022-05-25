@@ -1,0 +1,896 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 11 - Importing Resources into the Terraform State File &mdash; Head in the Clouds</title>
+<meta name="description" content="
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 11 - Importing Resources into the Terraform State File">
+<meta name="twitter:description" content="
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 11 - Importing Resources into the Terraform State File">
+<meta property="og:description" content="
+">
+<meta property="og:url" content="/episodes/episode11/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode11/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 11 - Importing Resources into the Terraform State File | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 11 - Importing Resources into the Terraform State File" />
+<meta property="og:locale" content="en_US" />
+<link rel="canonical" href="http://localhost:4000/episodes/episode11/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode11/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 11 - Importing Resources into the Terraform State File" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:39-03:00","datePublished":"2022-05-24T15:17:05-03:00","headline":"Episode 11 - Importing Resources into the Terraform State File","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode11/"},"url":"http://localhost:4000/episodes/episode11/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 11 - Importing Resources into the Terraform State File</h1>
+    <div class="article-wrap">
+      <div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/QpI_9NY1Cy0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>11 - Importing Resources into the Terraform State File</p>
+
+<p>Welcome to Episode 11 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “Importing Resources into the Terraform State File”</p>
+
+<p>The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.</p>
+
+<p>The idea for today’s content came from teaching <a href="https://www.sans.org/cyber-security-courses/public-cloud-security-aws-azure-gcp/">SANS SEC510: Public Cloud Security: AWS, Azure, and GCP</a> where we use various Terraform scripts to deploy assets to AWS, Azure, and GCP throughout the week. Occasionally during the class a student’s Terraform state file may become out of synch with the resources that the student has deployed. The most frequent cause of this is a transient network connectivity issue where Terraform makes an API call to a cloud service but Terraform doesn’t get the response and therefore does not update its state, even though the cloud service actually did provision the resource.</p>
+
+<p>The solution to this situation is to import the resource into the Terraform state file, and hence that is the topic for today’s episode. Today, we will cover how to import various resources into each of the big three cloud service providers and also how to import when your Terraform scripts use modules.</p>
+
+<h2 id="set-up">Set Up</h2>
+
+<p>In this episode, we will use the same GitHub repository that we used in Episode 10 - <a href="https://github.com/Resistor52/tf-vm_in3csps">https://github.com/Resistor52/tf-vm_in3csps</a>. In Episode 10 we covered how to deploy a virtual machine in AWS, Azure, and GCP.  To follow along with this episode, be sure to complete the setup, authentication, and deployment process for each module that we covered in Episode 10.</p>
+
+<h2 id="an-aws-example">An AWS Example</h2>
+
+<p>After you have completed all the activities for Episode 10, we are now ready to play with AWS more. Change into the directory for the AWS module:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd ~/tf-vm_in3csps/modules/aws
+</code></pre></div></div>
+
+<p>To start, let’s deploy the AWS assets. Make sure that the <code class="language-plaintext highlighter-rouge">terraform.tfvars</code> file is set up for your AWS environment. Since I am using “us-east-1” and the other defaults look good, I can just copy the <code class="language-plaintext highlighter-rouge">terraform.tfvars.example</code> file.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cp terraform.tfvars.example terraform.tfvars
+</code></pre></div></div>
+
+<p>With that done, I can initialize Terraform to download the AWS provider and then run <code class="language-plaintext highlighter-rouge">apply</code> to provision the assets:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform init
+terraform apply
+
+</code></pre></div></div>
+
+<p>Once Terraform completes, take a look at the security group that was just added:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-security-groups --filter "Name=group-name,Values=hitc-sg"
+</code></pre></div></div>
+
+<p>This CLI command will produce output similar to the following:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "SecurityGroups": [
+        {
+            "Description": "Managed by Terraform",
+            "GroupName": "hitc-sg",
+            "IpPermissions": [
+                {
+                    "FromPort": 22,
+                    "IpProtocol": "tcp",
+                    "IpRanges": [
+                        {
+                            "CidrIp": "3.82.94.254/32"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": [],
+                    "ToPort": 22,
+                    "UserIdGroupPairs": []
+                }
+            ],
+            "OwnerId": "690634326977",
+            "GroupId": "sg-03d802dd559b6dd49",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": [],
+                    "UserIdGroupPairs": []
+                }
+            ],
+            "VpcId": "vpc-018dd59eb5d725d61"
+        }
+    ]
+}
+</code></pre></div></div>
+
+<p><strong>NOTE:</strong> In this episode, we will <em>intentionally</em> add resources to the cloud service provider directly to <em>intentionally</em> make the state file out of synch with what is deployed. The best practice pattern is to make changes to your infrastructure only by modifying your terraform *.tf files and applying those changes.</p>
+
+<p>Next we will add in a security group rule for HTTP (port 80) to our “hitc-sg” security group using the authorize-security-group-ingress CLI command. However, we need to supply the Security Group ID. To determine the Security Group ID, run the following command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-security-groups --filter "Name=group-name,Values=hitc-sg" --query SecurityGroups[].GroupId --output text
+</code></pre></div></div>
+
+<p>Ok, now we can run that as a subshell where the authorize-security-group-ingress CLI command asks for the security group:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 authorize-security-group-ingress --group-id $(aws ec2 describe-security-groups --filter "Name=group-name,Values=hitc-sg" --query SecurityGroups[].GroupId --output text) --protocol tcp --port 80 --cidr 0.0.0.0/0
+</code></pre></div></div>
+
+<p>This command produces the following output:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "Return": true,
+    "SecurityGroupRules": [
+        {
+            "SecurityGroupRuleId": "sgr-015282b295b573fbd",
+            "GroupId": "sg-03d802dd559b6dd49",
+            "GroupOwnerId": "690634326977",
+            "IsEgress": false,
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIpv4": "0.0.0.0/0"
+        }
+    ]
+}
+</code></pre></div></div>
+
+<p>We can confirm the change to the security group by re-running:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws ec2 describe-security-groups --filter "Name=group-name,Values=hitc-sg"
+</code></pre></div></div>
+
+<p>which will output something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "SecurityGroups": [
+        {
+            "Description": "Managed by Terraform",
+            "GroupName": "hitc-sg",
+            "IpPermissions": [
+                {
+                    "FromPort": 80,
+                    "IpProtocol": "tcp",
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": [],
+                    "ToPort": 80,
+                    "UserIdGroupPairs": []
+                },
+                {
+                    "FromPort": 22,
+                    "IpProtocol": "tcp",
+                    "IpRanges": [
+                        {
+                            "CidrIp": "3.82.94.254/32"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": [],
+                    "ToPort": 22,
+                    "UserIdGroupPairs": []
+                }
+            ],
+            "OwnerId": "690634326977",
+            "GroupId": "sg-03d802dd559b6dd49",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": [],
+                    "UserIdGroupPairs": []
+                }
+            ],
+            "VpcId": "vpc-018dd59eb5d725d61"
+        }
+    ]
+}
+</code></pre></div></div>
+
+<p>Now what happens when we run terraform apply?</p>
+
+<p>We get messages that include the following:</p>
+
+<ul>
+  <li>“Terraform detected the following changes made outside of Terraform since the last ‘terraform apply’”</li>
+  <li>“Unless you have made equivalent changes to your configuration, or ignored the relevant attributes using ignore_changes, the following plan may include actions to undo or respond to these changes.”</li>
+  <li>“Your configuration already matches the changes detected above. If you’d like to update the Terraform state to match, create and apply a refresh-only plan: terraform apply -refresh-only”</li>
+</ul>
+
+<p>Since we are just playing around, give that a try. Run:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform apply --refresh-only
+</code></pre></div></div>
+
+<p>When we do so, we get the message:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>No changes. Your infrastructure still matches the configuration.
+
+Terraform has checked that the real remote objects still match the result of your most recent changes, and found no differences.
+
+Would you like to update the Terraform state to reflect these detected changes?
+  Terraform will write these changes to the state without modifying any real infrastructure.
+  There is no undo. Only 'yes' will be accepted to confirm.
+
+  Enter a value:
+</code></pre></div></div>
+
+<p>If we respond “yes” to the prompt, Terraform will update the state file to include our new security group rule. Then if we run <code class="language-plaintext highlighter-rouge">terraform apply</code> once more, we will get the message:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+
+Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+</code></pre></div></div>
+
+<p><strong>Question:</strong> Does the <code class="language-plaintext highlighter-rouge">--refresh-only</code> option solve our problem?</p>
+
+<p>No, because our TF code is still our of whack with what is deployed. Our goal should be to have a three way match between:</p>
+
+<ul>
+  <li>What is deployed in the cloud</li>
+  <li>What is captured in the Terraform state file</li>
+  <li>What is indicated in the *.TF files</li>
+</ul>
+
+<p>The problem is that our infrastructure as code does not know about this change. Let’s fix that.</p>
+
+<p>Open up the <code class="language-plaintext highlighter-rouge">~/tf-vm_in3csps/module/aws/network.tf</code> file and insert the following resource block at the end of the file:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>resource "aws_security_group_rule" "sg-http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.hitc-sg.id
+}
+</code></pre></div></div>
+
+<p>What happens when we run <code class="language-plaintext highlighter-rouge">terraform apply</code>?</p>
+
+<p>We get a message that includes the following at the end:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # aws_security_group_rule.sg-http will be created
+  + resource "aws_security_group_rule" "sg-http" {
+      + cidr_blocks              = [
+          + "0.0.0.0/0",
+        ]
+      + from_port                = 80
+      + id                       = (known after apply)
+      + protocol                 = "tcp"
+      + security_group_id        = "sg-03d802dd559b6dd49"
+      + self                     = false
+      + source_security_group_id = (known after apply)
+      + to_port                  = 80
+      + type                     = "ingress"
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+Do you want to perform these actions?
+  Terraform will perform the actions described above.
+  Only 'yes' will be accepted to approve.
+
+  Enter a value:
+</code></pre></div></div>
+
+<p>However, when we respond “yes” to the prompt, we get an error that reads:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>╷
+│ Error: [WARN] A duplicate Security Group rule was found on (sg-03d802dd559b6dd49). This may be
+│ a side effect of a now-fixed Terraform issue causing two security groups with
+│ identical attributes but different source_security_group_ids to overwrite each
+│ other in the state. See https://github.com/hashicorp/terraform/pull/2376 for more
+│ information and instructions for recovery. Error: InvalidPermission.Duplicate: the specified rule "peer: 0.0.0.0/0, TCP, from port: 80, to port: 80, ALLOW" already exists
+│       status code: 400, request id: 40951575-b544-415c-ad51-6264ccb3aaf6
+│
+│   with aws_security_group_rule.sg-http,
+│   on network.tf line 73, in resource "aws_security_group_rule" "sg-http":
+│   73: resource "aws_security_group_rule" "sg-http" {
+│
+</code></pre></div></div>
+
+<p>Although there is a note in the error message indicating a bug that Hashicorp fixed, we know the reason for this error–<strong><em>we caused it</em></strong>.</p>
+
+<p>There are two possible fixes:</p>
+<ul>
+  <li>One way to fix the issue is to undo the manual change. Sometimes this may be the most expedient approach.</li>
+  <li>Alternatively, we can import the security group rule into the state file and that is what we will do.</li>
+</ul>
+
+<p>Let’s pause for a moment and discuss a generic approach to determining how to import a resource into terraform. First off, recognize that each cloud service requires a different <strong>provider</strong> (plugin) so that Terraform knows how to call that cloud provider’s API. Also, each resource block may require different data to be added to the import command. Therefore, it is imperative to consult the online documentation for the provider to determine the syntax of the import command for the particular resource.</p>
+
+<p><strong>TIP:</strong> To find the Terraform provider documentation, use the following search terms “terraform import” and the resource that you need to import.</p>
+
+<p>As an example, since we need to import a <code class="language-plaintext highlighter-rouge">aws_security_group_rule</code>, we would search for “terraform import aws_security_group_rule” and the top result will most likely lead you to the following page:</p>
+
+<ul>
+  <li><a href="https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group_rule#import">https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group_rule#import</a></li>
+</ul>
+
+<p>Scrolling down to the “import” section, we see several examples of import commands, but it looks like the top one is closest to what we are looking for:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import aws_security_group_rule.ingress sg-6e616f6d69_ingress_tcp_8000_8000_10.0.3.0/24
+</code></pre></div></div>
+
+<p>Considering the above example, we need to substitute in our security group id as well as the desired port and CIDR block. This results in:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import aws_security_group_rule.sg-http sg-03d802dd559b6dd49_ingress_tcp_80_80_0.0.0.0/0
+</code></pre></div></div>
+
+<p>Of course your security group ID will be different. Conveniently, the providers error message typically provides the information that you need to supply to the import statement, such as the security group id.</p>
+
+<p>Running this command results in the following message:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws_security_group_rule.sg-http: Importing from ID "sg-03d802dd559b6dd49_ingress_tcp_80_80_0.0.0.0/0"...
+aws_security_group_rule.sg-http: Import prepared!
+  Prepared aws_security_group_rule for import
+aws_security_group_rule.sg-http: Refreshing state... [id=sg-03d802dd559b6dd49_ingress_tcp_80_80_0.0.0.0/0]
+
+Import successful!
+
+The resources that were imported are shown above. These resources are now in
+your Terraform state and will henceforth be managed by Terraform.
+</code></pre></div></div>
+
+<p>Running <code class="language-plaintext highlighter-rouge">terraform apply</code> shows that there are no changes needed.
+Ok, run <code class="language-plaintext highlighter-rouge">terraform destroy</code> to remove the infrastructure in AWS</p>
+
+<h2 id="an-azure-example">An Azure Example</h2>
+
+<p>Next, lets play with Azure.</p>
+
+<p>Change into the directory for the Azure module and if needed modify terraform.tfvars:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd ../azure
+cp terraform.tfvars.example terraform.tfvars
+</code></pre></div></div>
+
+<p>Next, as before with AWS, initialize terraform and deploy the Azure infrastructure.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform init
+terraform apply
+</code></pre></div></div>
+
+<p>For fun, let’s manually add a subnet. Fist let’s show the subnet in our VNet:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>az network vnet subnet list --resource-group hitc --vnet-name hitc-vnet
+</code></pre></div></div>
+
+<p>This shows the following output:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[
+  {
+    "addressPrefix": "10.0.2.0/24",
+    "addressPrefixes": null,
+    "applicationGatewayIpConfigurations": null,
+    "delegations": [],
+    "etag": "W/\"d9404f52-c63e-45a4-ab0c-22c94828ddcb\"",
+    "id": "/subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/virtualNetworks/hitc-vnet/subnets/hitc-subnet",
+    "ipAllocations": null,
+    "ipConfigurationProfiles": null,
+    "ipConfigurations": [
+      {
+        "etag": null,
+        "id": "/subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/networkInterfaces/hitc-nic/ipConfigurations/myNicConfiguration",
+        "name": null,
+        "privateIpAddress": null,
+        "privateIpAllocationMethod": null,
+        "provisioningState": null,
+        "publicIpAddress": null,
+        "resourceGroup": "hitc",
+        "subnet": null
+      }
+    ],
+    "name": "hitc-subnet",
+    "natGateway": null,
+    "networkSecurityGroup": null,
+    "privateEndpointNetworkPolicies": "Enabled",
+    "privateEndpoints": null,
+    "privateLinkServiceNetworkPolicies": "Enabled",
+    "provisioningState": "Succeeded",
+    "purpose": null,
+    "resourceGroup": "hitc",
+    "resourceNavigationLinks": null,
+    "routeTable": null,
+    "serviceAssociationLinks": null,
+    "serviceEndpointPolicies": null,
+    "serviceEndpoints": [],
+    "type": "Microsoft.Network/virtualNetworks/subnets"
+  }
+]
+</code></pre></div></div>
+
+<p>Good, now add a second subnet:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>az network vnet subnet create --resource-group hitc --vnet-name hitc-vnet --address-prefixes 10.0.3.0/24 --name "hitc-subnet2"
+</code></pre></div></div>
+
+<p>This CLI command produces:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "addressPrefix": "10.0.3.0/24",
+  "addressPrefixes": null,
+  "applicationGatewayIpConfigurations": null,
+  "delegations": [],
+  "etag": "W/\"de7f4cf4-0202-46bf-aecc-ba52152abd3a\"",
+  "id": "/subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/virtualNetworks/hitc-vnet/subnets/hitc-subnet2",
+  "ipAllocations": null,
+  "ipConfigurationProfiles": null,
+  "ipConfigurations": null,
+  "name": "hitc-subnet2",
+  "natGateway": null,
+  "networkSecurityGroup": null,
+  "privateEndpointNetworkPolicies": "Enabled",
+  "privateEndpoints": null,
+  "privateLinkServiceNetworkPolicies": "Enabled",
+  "provisioningState": "Succeeded",
+  "purpose": null,
+  "resourceGroup": "hitc",
+  "resourceNavigationLinks": null,
+  "routeTable": null,
+  "serviceAssociationLinks": null,
+  "serviceEndpointPolicies": null,
+  "serviceEndpoints": null,
+  "type": "Microsoft.Network/virtualNetworks/subnets"
+}
+</code></pre></div></div>
+
+<p>Now lets modify <code class="language-plaintext highlighter-rouge">~/tf-vm_in3csps/modules/azure/network.tf</code></p>
+
+<p>Add the following block under the existing “hitc-subnet” resource block. (It should be the third resource block down in the file.)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>resource "azurerm_subnet" "hitc-subnet2" {
+  name                 = "hitc-subnet2"
+  resource_group_name  = azurerm_resource_group.hitc.name
+  virtual_network_name = azurerm_virtual_network.hitc-vnet.name
+  address_prefixes     = ["10.0.3.0/24"]
+}
+
+</code></pre></div></div>
+<p>Now, when we run <code class="language-plaintext highlighter-rouge">terraform apply</code> we get the following error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>╷
+│ Error: A resource with the ID "/subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/virtualNetworks/hitc-vnet/subnets/hitc-subnet2" already exists - to be managed via Terraform this resource needs to be imported into the State. Please see the resource documentation for "azurerm_subnet" for more information.
+│
+│   with azurerm_subnet.hitc-subnet2,
+│   on network.tf line 15, in resource "azurerm_subnet" "hitc-subnet2":
+│   15: resource "azurerm_subnet" "hitc-subnet2" {
+│
+╵
+</code></pre></div></div>
+
+<p>Do an internet search for “terraform import azurerm_subnet” leads you to <a href="https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet#import">https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet#import</a></p>
+
+<p>The Terraform provider documentation gives the following example:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import azurerm_subnet.exampleSubnet /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mygroup1/providers/Microsoft.Network/virtualNetworks/myvnet1/subnets/mysubnet1
+</code></pre></div></div>
+
+<p>Making the appropriate substitutions, we get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import azurerm_subnet.hitc-subnet2 /subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/virtualNetworks/hitc-vnet/subnets/hitc-subnet2
+</code></pre></div></div>
+
+<p>Naturally, your subscription ID will be different than mine.</p>
+
+<p>Great, running that import command produces the following result:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>azurerm_subnet.hitc-subnet2: Importing from ID "/subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/virtualNetworks/hitc-vnet/subnets/hitc-subnet2"...
+azurerm_subnet.hitc-subnet2: Import prepared!
+  Prepared azurerm_subnet for import
+azurerm_subnet.hitc-subnet2: Refreshing state... [id=/subscriptions/911d03ca-d335-4697-8254-024980a4f55a/resourceGroups/hitc/providers/Microsoft.Network/virtualNetworks/hitc-vnet/subnets/hitc-subnet2]
+
+Import successful!
+
+The resources that were imported are shown above. These resources are now in
+your Terraform state and will henceforth be managed by Terraform.
+</code></pre></div></div>
+
+<p>As you can see, success is all about modifying the example contained in the documentation for the Terraform provider.</p>
+
+<p>Well, that’s our Azure example. We can tear it down using <code class="language-plaintext highlighter-rouge">terraform destroy</code></p>
+
+<h2 id="a-gcp-example">A GCP Example</h2>
+
+<p>Ok, to mix things up, let’s mess with the GCP state file. Change into the “gcp” directory. Remember you may
+need to update the PROJECT_ID in the terraform.tfvars file to match the project you created during the Lab Setup.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd ../gcp
+cp terraform.tfvars.example terraform.tfvars
+</code></pre></div></div>
+
+<p>Now,</p>
+
+<p>Then:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform init
+terraform apply
+</code></pre></div></div>
+
+<p>What happens if we remove the Google Compute Instance from the state file?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform state rm google_compute_instance.vm_instance
+</code></pre></div></div>
+
+<p>This outputs:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Removed google_compute_instance.vm_instance
+Successfully removed 1 resource instance(s).
+</code></pre></div></div>
+
+<p>This command removes the resource from the state file but note that the VM is still running. To confirm, just take a look in the GCP console.</p>
+
+<p>Now, lets make terraform throw an error by trying to run <code class="language-plaintext highlighter-rouge">terraform apply</code></p>
+
+<p>We get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>╷
+│ Error: Error creating instance: googleapi: Error 409: The resource 'projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp' already exists, alreadyExists
+│
+│   with google_compute_instance.vm_instance,
+│   on vm.tf line 1, in resource "google_compute_instance" "vm_instance":
+│    1: resource "google_compute_instance" "vm_instance" {
+│
+</code></pre></div></div>
+
+<p>Perform an internet search for “terraform import google_compute_instance”</p>
+
+<p>The documentation gives the following example:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import google_compute_instance.default projects//zones//instances/
+</code></pre></div></div>
+
+<p>Making the appropriate substitutions:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import google_compute_instance.vm_instance projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp
+</code></pre></div></div>
+
+<p>And this produces the following result:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>google_compute_instance.vm_instance: Importing from ID "projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp"...
+google_compute_instance.vm_instance: Import prepared!
+  Prepared google_compute_instance for import
+google_compute_instance.vm_instance: Refreshing state... [id=projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp]
+
+Import successful!
+
+The resources that were imported are shown above. These resources are now in
+your Terraform state and will henceforth be managed by Terraform.
+
+</code></pre></div></div>
+
+<p>Now when we run <code class="language-plaintext highlighter-rouge">terraform apply</code> it shows no changes need to be made and it does not throw an error.</p>
+
+<p>Go ahead and run <code class="language-plaintext highlighter-rouge">terraform destroy</code></p>
+
+<h2 id="an-example-using-a-module">An Example using a Module</h2>
+
+<p>Ok, there is one more item I want to cover and that is how things change with importing when there is a module involved.</p>
+
+<p>Change back to the root level directory of our terraform code.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd ../..
+</code></pre></div></div>
+
+<p>If you customized your terraform.tfvars files for each module, you can create a root level tfvars file using the following command:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat modules/aws/terraform.tfvars modules/azure/terraform.tfvars modules/gcp/terraform.tfvars | sort | uniq &gt; terraform.tfvars
+</code></pre></div></div>
+
+<p>Good, now let’s initialize terraform and deploy our resources:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform init
+terraform apply
+</code></pre></div></div>
+
+<p>At the end of the deployment we should see something like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Apply complete! Resources: 23 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+aws_ip = "3.84.223.103"
+aws_ssh_connection_string = "ssh -i ~/.ssh/id_rsa ubuntu@3.84.223.103"
+az_ip = "52.173.16.243"
+az_ssh_connection_string = "ssh -i ~/.ssh/id_rsa ubuntu@52.173.16.243"
+gcp_ip = "35.184.117.84"
+gcp_ssh_connection_string = "ssh -i ~/.ssh/id_rsa ubuntu@35.184.117.84"
+</code></pre></div></div>
+
+<p>Note that your IP addresses will be different.</p>
+
+<p>Now that we have deployed everything. Lets remove the GCE instance from the state file.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform state rm module.gcp.google_compute_instance.vm_instance
+</code></pre></div></div>
+
+<p>Note that the Google cloud terraform code is in a directory called “gcp” and this is what gives the module its name. A resource in a module has “module” plus the module name added as part of the “address” to the object in the state file.</p>
+
+<p>Therefore, we need to use “<strong>module.gcp.</strong>google_compute_instance.vm_instance” to reference the resource.  See <a href="https://www.terraform.io/docs/cli/commands/state/rm.html">https://www.terraform.io/docs/cli/commands/state/rm.html</a> for more information.</p>
+
+<p>The output of this command will be:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Removed module.gcp.google_compute_instance.vm_instance
+Successfully removed 1 resource instance(s).
+</code></pre></div></div>
+
+<p>Now, if we run <code class="language-plaintext highlighter-rouge">terraform apply</code> we will get an error as expected:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>╷
+│ Error: Error creating instance: googleapi: Error 409: The resource 'projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp' already exists, alreadyExists
+│
+│   with module.gcp.google_compute_instance.vm_instance,
+│   on modules/gcp/vm.tf line 1, in resource "google_compute_instance" "vm_instance":
+│    1: resource "google_compute_instance" "vm_instance" {
+│
+╵
+</code></pre></div></div>
+
+<p>Notice anything different about the error message? The portion that reads <code class="language-plaintext highlighter-rouge">with module.gcp.google_compute_instance.vm_instance</code> indicates the “address” of where we want to import the object into the state file.</p>
+
+<p>Hence, our import command will be:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform import module.gcp.google_compute_instance.vm_instance projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp
+</code></pre></div></div>
+
+<p>And the result of the command should look like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>module.gcp.google_compute_instance.vm_instance: Importing from ID "projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp"...
+module.gcp.google_compute_instance.vm_instance: Import prepared!
+  Prepared google_compute_instance for import
+module.gcp.google_compute_instance.vm_instance: Refreshing state... [id=projects/tf-gcp-324518/zones/us-central1-a/instances/hitc-gcp]
+
+Import successful!
+
+The resources that were imported are shown above. These resources are now in
+your Terraform state and will henceforth be managed by Terraform.
+
+</code></pre></div></div>
+
+<p>Now when we run <code class="language-plaintext highlighter-rouge">terraform apply</code> we can see that it shows that zero resources were added, changed, and destroyed.</p>
+
+<h2 id="wrap-up">Wrap Up</h2>
+
+<p>Well, there you go. Hopefully this episode helps you understand the process of importing a resource into the Terraform state. Just remember to lookup the import syntax as it can vary based on the provider and the resource that you intend to import.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode11/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode11/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode11/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

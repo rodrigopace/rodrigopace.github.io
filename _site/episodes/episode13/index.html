@@ -1,0 +1,1627 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 13 - Docker Jumpstart &mdash; Head in the Clouds</title>
+<meta name="description" content="13 - Docker Jumpstart
+
+
+
+Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Docker Jumpstart”
+
+Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode.
+
+Setup
+
+For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the Docker installation documentation.
+
+First, set up the repo by running the following commands:
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+
+
+Then add Docker’s official GPG key
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null
+
+
+
+Next, set up Docker Engine (Community Edition):
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+
+
+Explore Docker
+
+Verify that there are no docker images on the local system:
+
+sudo docker images
+
+
+Note that if we try to run the docker images command with out sudo we get a permissions error:
+
+ubuntu@ubuntu:~$ docker images
+Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json": dial unix /var/run/docker.sock: connect: permission denied
+
+
+We can fix that by adding the “ubuntu” user to the “docker” group:
+
+sudo usermod -aG docker ubuntu
+newgrp docker       # Trick to load new group permissions
+
+
+Now we can run the Docker version of the classic ‘hello world’ test:
+
+ubuntu@ubuntu:~$ docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+2db29710123e: Pull complete
+Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/get-started/
+
+
+
+Let’s rerun the docker images and see what changed:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY    TAG       IMAGE ID       CREATED      SIZE
+hello-world   latest    feb5d9fea6a5   8 days ago   13.3kB
+
+
+
+Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run docker help to see a list of all the possible docker commands.
+
+It looks like it would be docker rmi, so let’s try it:
+
+ubuntu@ubuntu:~$ docker rmi hello-world
+Error response from daemon: conflict: unable to remove repository reference "hello-world" (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5
+
+
+Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using docker ps
+
+ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+
+Well, that didn’t show us what we wanted to see, let’s rerun it with the --all option:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE         COMMAND    CREATED              STATUS                          PORTS     NAMES
+39c0bbdce667   hello-world   "/hello"   About a minute ago   Exited (0) About a minute ago             nifty_turing
+
+
+The --all option shows all containers, not just the running containers. (For more info see https://docs.docker.com/engine/reference/commandline/ps/)
+
+Now that we know the container id that is referencing our hello-world image, we can delete it using the docker rm command, as follows:
+
+docker rm 39c0bbdce667
+
+
+Now if we rerun the docker ps --all command, we see that the container is gone:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+
+Once the container is zapped, we can delete the image:
+
+ubuntu@ubuntu:~$ docker rmi hello-world
+Untagged: hello-world:latest
+Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412
+Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359
+
+
+And just to confirm that it is actually deleted:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
+
+
+Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub:
+
+ubuntu@ubuntu:~$ docker pull ubuntu
+Using default tag: latest
+latest: Pulling from library/ubuntu
+f3ef4ff62e0d: Pull complete
+Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d
+Status: Downloaded newer image for ubuntu:latest
+docker.io/library/ubuntu:latest
+
+
+We can see that it was downloaded:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
+ubuntu       latest    597ce1600cf4   46 hours ago   72.8MB
+
+
+Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options:
+
+
+  -i –&gt; Interactive, Keep STDIN open even if not attached
+  -t –&gt; Allocate a pseudo-TTY
+
+
+While we are at it, we will assign a name to the container with the --name option.
+
+So our command becomes:
+
+docker run --name test -it ubuntu bash
+
+
+And then we see our prompt change. Now we can run some commands that are executed inside the container:
+
+ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash
+root@a843c11e5313:/# whoami
+root
+root@a843c11e5313:/# hostname
+a843c11e5313
+root@a843c11e5313:/# pwd
+/
+root@a843c11e5313:/# ls /
+bin  boot  dev  etc  home  lib  lib32  lib64  libx32  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+root@a843c11e5313:/# ls /home
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+
+
+The exit command kills the container executing in the foreground and returns us to our original prompt.
+
+List the container:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED         STATUS                     PORTS     NAMES
+a843c11e5313   ubuntu    "bash"    4 minutes ago   Exited (0) 3 minutes ago             test
+
+
+We can run the container again by using the docker start command, remembering to pass in the interactive option:
+
+ubuntu@ubuntu:~$ docker start -i test
+root@a843c11e5313:/#
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+
+
+If we use the --rm option with the run command, it cleans up the container when the command passed into the container exits:
+
+docker run --name test2 -it --rm ubuntu ls
+
+
+In this case, the ls command runs in the container, and then the container exits:
+
+ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls
+bin   dev  home  lib32  libx32  mnt  proc  run   srv  tmp  var
+boot  etc  lib   lib64  media   opt  root  sbin  sys  usr
+ubuntu@ubuntu:~$
+
+
+Note that we named the container “test2” but when we run docker ps --all we do not see it listed, because of the --rm switch.
+
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND                  CREATED          STATUS                         PORTS     NAMES
+a843c11e5313   ubuntu    "bash"                   2 hours ago      Exited (0) About an hour ago             test
+
+
+Create a Custom Image
+The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html”
+
+mkdir html
+echo "Head in the Clouds" &gt; html/index.html
+
+
+
+With that done, we need to create a Dockerfile
+
+Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing  /usr/share/nginx/html
+
+echo 'FROM nginx' &gt; Dockerfile
+echo 'COPY html /usr/share/nginx/html' &gt;&gt; Dockerfile
+
+
+
+That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile:
+
+ubuntu@ubuntu:~$ cat Dockerfile
+FROM nginx
+COPY html /usr/share/nginx/html
+
+
+
+Now let’s build a custom image based on our Dockerfile:
+
+docker build -t hitc .
+
+
+Note that the “.” indicates “the current directory”
+
+ubuntu@ubuntu:~$ docker build -t hitc .
+Sending build context to Docker daemon  14.85kB
+Step 1/2 : FROM nginx
+latest: Pulling from library/nginx
+07aded7c29c6: Pull complete
+bbe0b7acc89c: Pull complete
+44ac32b0bba8: Pull complete
+91d6e3e593db: Pull complete
+8700267f2376: Pull complete
+4ce73aa6e9b0: Pull complete
+Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652
+Status: Downloaded newer image for nginx:latest
+ ---&gt; f8f4ffc8092c
+Step 2/2 : COPY html /usr/share/nginx/html
+ ---&gt; 995b0de5245b
+Successfully built 995b0de5245b
+Successfully tagged hitc:latest
+ubuntu@ubuntu:~$
+
+
+
+Now when we run docker images we see two new images along with the ‘ubuntu’ image from before:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+hitc         latest    995b0de5245b   44 seconds ago   133MB
+ubuntu       latest    597ce1600cf4   47 hours ago     72.8MB
+nginx        latest    f8f4ffc8092c   4 days ago       133MB
+
+
+The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub.
+
+Ok, lets spin up a container from this image and see if we can hit with curl:
+
+docker run --name episode13 -d -p 8080:80 hitc
+
+
+And we get:
+
+ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc
+61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626
+ubuntu@ubuntu:~$ curl localhost:8080
+Head in the Clouds
+ubuntu@ubuntu:~$
+
+
+
+Note that the -d option ran the container in the background and the -p option maps port 8080 on the host to port 80 in the container.
+
+We can run docker ps to see that it is still running in the background:
+
+ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS                                   NAMES
+61747901bb59   hitc      "/docker-entrypoint.…"   5 minutes ago   Up 5 minutes   0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp   episode13
+
+
+If we want to see what processes are running inside the container, we can use docker top [CONTAINER] like so:
+
+ubuntu@ubuntu:~$ docker top episode13
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                10642               10616               0                   01:47               ?                   00:00:00            nginx: master process nginx -g daemon off;
+systemd+            10693               10642               0                   01:47               ?                   00:00:00            nginx: worker process
+
+
+
+If we stop the container, we will no longer be able to connect to port 8080:
+
+ubuntu@ubuntu:~$ docker stop episode13
+episode13
+ubuntu@ubuntu:~$ curl localhost:8080
+curl: (7) Failed to connect to localhost port 8080: Connection refused
+
+
+Wrap up
+
+Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 13 - Docker Jumpstart">
+<meta name="twitter:description" content="13 - Docker Jumpstart
+
+
+
+Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Docker Jumpstart”
+
+Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode.
+
+Setup
+
+For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the Docker installation documentation.
+
+First, set up the repo by running the following commands:
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+
+
+Then add Docker’s official GPG key
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null
+
+
+
+Next, set up Docker Engine (Community Edition):
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+
+
+Explore Docker
+
+Verify that there are no docker images on the local system:
+
+sudo docker images
+
+
+Note that if we try to run the docker images command with out sudo we get a permissions error:
+
+ubuntu@ubuntu:~$ docker images
+Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json": dial unix /var/run/docker.sock: connect: permission denied
+
+
+We can fix that by adding the “ubuntu” user to the “docker” group:
+
+sudo usermod -aG docker ubuntu
+newgrp docker       # Trick to load new group permissions
+
+
+Now we can run the Docker version of the classic ‘hello world’ test:
+
+ubuntu@ubuntu:~$ docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+2db29710123e: Pull complete
+Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/get-started/
+
+
+
+Let’s rerun the docker images and see what changed:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY    TAG       IMAGE ID       CREATED      SIZE
+hello-world   latest    feb5d9fea6a5   8 days ago   13.3kB
+
+
+
+Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run docker help to see a list of all the possible docker commands.
+
+It looks like it would be docker rmi, so let’s try it:
+
+ubuntu@ubuntu:~$ docker rmi hello-world
+Error response from daemon: conflict: unable to remove repository reference "hello-world" (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5
+
+
+Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using docker ps
+
+ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+
+Well, that didn’t show us what we wanted to see, let’s rerun it with the --all option:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE         COMMAND    CREATED              STATUS                          PORTS     NAMES
+39c0bbdce667   hello-world   "/hello"   About a minute ago   Exited (0) About a minute ago             nifty_turing
+
+
+The --all option shows all containers, not just the running containers. (For more info see https://docs.docker.com/engine/reference/commandline/ps/)
+
+Now that we know the container id that is referencing our hello-world image, we can delete it using the docker rm command, as follows:
+
+docker rm 39c0bbdce667
+
+
+Now if we rerun the docker ps --all command, we see that the container is gone:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+
+Once the container is zapped, we can delete the image:
+
+ubuntu@ubuntu:~$ docker rmi hello-world
+Untagged: hello-world:latest
+Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412
+Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359
+
+
+And just to confirm that it is actually deleted:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
+
+
+Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub:
+
+ubuntu@ubuntu:~$ docker pull ubuntu
+Using default tag: latest
+latest: Pulling from library/ubuntu
+f3ef4ff62e0d: Pull complete
+Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d
+Status: Downloaded newer image for ubuntu:latest
+docker.io/library/ubuntu:latest
+
+
+We can see that it was downloaded:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
+ubuntu       latest    597ce1600cf4   46 hours ago   72.8MB
+
+
+Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options:
+
+
+  -i –&gt; Interactive, Keep STDIN open even if not attached
+  -t –&gt; Allocate a pseudo-TTY
+
+
+While we are at it, we will assign a name to the container with the --name option.
+
+So our command becomes:
+
+docker run --name test -it ubuntu bash
+
+
+And then we see our prompt change. Now we can run some commands that are executed inside the container:
+
+ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash
+root@a843c11e5313:/# whoami
+root
+root@a843c11e5313:/# hostname
+a843c11e5313
+root@a843c11e5313:/# pwd
+/
+root@a843c11e5313:/# ls /
+bin  boot  dev  etc  home  lib  lib32  lib64  libx32  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+root@a843c11e5313:/# ls /home
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+
+
+The exit command kills the container executing in the foreground and returns us to our original prompt.
+
+List the container:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED         STATUS                     PORTS     NAMES
+a843c11e5313   ubuntu    "bash"    4 minutes ago   Exited (0) 3 minutes ago             test
+
+
+We can run the container again by using the docker start command, remembering to pass in the interactive option:
+
+ubuntu@ubuntu:~$ docker start -i test
+root@a843c11e5313:/#
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+
+
+If we use the --rm option with the run command, it cleans up the container when the command passed into the container exits:
+
+docker run --name test2 -it --rm ubuntu ls
+
+
+In this case, the ls command runs in the container, and then the container exits:
+
+ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls
+bin   dev  home  lib32  libx32  mnt  proc  run   srv  tmp  var
+boot  etc  lib   lib64  media   opt  root  sbin  sys  usr
+ubuntu@ubuntu:~$
+
+
+Note that we named the container “test2” but when we run docker ps --all we do not see it listed, because of the --rm switch.
+
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND                  CREATED          STATUS                         PORTS     NAMES
+a843c11e5313   ubuntu    "bash"                   2 hours ago      Exited (0) About an hour ago             test
+
+
+Create a Custom Image
+The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html”
+
+mkdir html
+echo "Head in the Clouds" &gt; html/index.html
+
+
+
+With that done, we need to create a Dockerfile
+
+Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing  /usr/share/nginx/html
+
+echo 'FROM nginx' &gt; Dockerfile
+echo 'COPY html /usr/share/nginx/html' &gt;&gt; Dockerfile
+
+
+
+That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile:
+
+ubuntu@ubuntu:~$ cat Dockerfile
+FROM nginx
+COPY html /usr/share/nginx/html
+
+
+
+Now let’s build a custom image based on our Dockerfile:
+
+docker build -t hitc .
+
+
+Note that the “.” indicates “the current directory”
+
+ubuntu@ubuntu:~$ docker build -t hitc .
+Sending build context to Docker daemon  14.85kB
+Step 1/2 : FROM nginx
+latest: Pulling from library/nginx
+07aded7c29c6: Pull complete
+bbe0b7acc89c: Pull complete
+44ac32b0bba8: Pull complete
+91d6e3e593db: Pull complete
+8700267f2376: Pull complete
+4ce73aa6e9b0: Pull complete
+Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652
+Status: Downloaded newer image for nginx:latest
+ ---&gt; f8f4ffc8092c
+Step 2/2 : COPY html /usr/share/nginx/html
+ ---&gt; 995b0de5245b
+Successfully built 995b0de5245b
+Successfully tagged hitc:latest
+ubuntu@ubuntu:~$
+
+
+
+Now when we run docker images we see two new images along with the ‘ubuntu’ image from before:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+hitc         latest    995b0de5245b   44 seconds ago   133MB
+ubuntu       latest    597ce1600cf4   47 hours ago     72.8MB
+nginx        latest    f8f4ffc8092c   4 days ago       133MB
+
+
+The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub.
+
+Ok, lets spin up a container from this image and see if we can hit with curl:
+
+docker run --name episode13 -d -p 8080:80 hitc
+
+
+And we get:
+
+ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc
+61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626
+ubuntu@ubuntu:~$ curl localhost:8080
+Head in the Clouds
+ubuntu@ubuntu:~$
+
+
+
+Note that the -d option ran the container in the background and the -p option maps port 8080 on the host to port 80 in the container.
+
+We can run docker ps to see that it is still running in the background:
+
+ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS                                   NAMES
+61747901bb59   hitc      "/docker-entrypoint.…"   5 minutes ago   Up 5 minutes   0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp   episode13
+
+
+If we want to see what processes are running inside the container, we can use docker top [CONTAINER] like so:
+
+ubuntu@ubuntu:~$ docker top episode13
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                10642               10616               0                   01:47               ?                   00:00:00            nginx: master process nginx -g daemon off;
+systemd+            10693               10642               0                   01:47               ?                   00:00:00            nginx: worker process
+
+
+
+If we stop the container, we will no longer be able to connect to port 8080:
+
+ubuntu@ubuntu:~$ docker stop episode13
+episode13
+ubuntu@ubuntu:~$ curl localhost:8080
+curl: (7) Failed to connect to localhost port 8080: Connection refused
+
+
+Wrap up
+
+Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 13 - Docker Jumpstart">
+<meta property="og:description" content="13 - Docker Jumpstart
+
+
+
+Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Docker Jumpstart”
+
+Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode.
+
+Setup
+
+For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the Docker installation documentation.
+
+First, set up the repo by running the following commands:
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+
+
+Then add Docker’s official GPG key
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null
+
+
+
+Next, set up Docker Engine (Community Edition):
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+
+
+Explore Docker
+
+Verify that there are no docker images on the local system:
+
+sudo docker images
+
+
+Note that if we try to run the docker images command with out sudo we get a permissions error:
+
+ubuntu@ubuntu:~$ docker images
+Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json": dial unix /var/run/docker.sock: connect: permission denied
+
+
+We can fix that by adding the “ubuntu” user to the “docker” group:
+
+sudo usermod -aG docker ubuntu
+newgrp docker       # Trick to load new group permissions
+
+
+Now we can run the Docker version of the classic ‘hello world’ test:
+
+ubuntu@ubuntu:~$ docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+2db29710123e: Pull complete
+Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/get-started/
+
+
+
+Let’s rerun the docker images and see what changed:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY    TAG       IMAGE ID       CREATED      SIZE
+hello-world   latest    feb5d9fea6a5   8 days ago   13.3kB
+
+
+
+Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run docker help to see a list of all the possible docker commands.
+
+It looks like it would be docker rmi, so let’s try it:
+
+ubuntu@ubuntu:~$ docker rmi hello-world
+Error response from daemon: conflict: unable to remove repository reference "hello-world" (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5
+
+
+Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using docker ps
+
+ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+
+Well, that didn’t show us what we wanted to see, let’s rerun it with the --all option:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE         COMMAND    CREATED              STATUS                          PORTS     NAMES
+39c0bbdce667   hello-world   "/hello"   About a minute ago   Exited (0) About a minute ago             nifty_turing
+
+
+The --all option shows all containers, not just the running containers. (For more info see https://docs.docker.com/engine/reference/commandline/ps/)
+
+Now that we know the container id that is referencing our hello-world image, we can delete it using the docker rm command, as follows:
+
+docker rm 39c0bbdce667
+
+
+Now if we rerun the docker ps --all command, we see that the container is gone:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+
+Once the container is zapped, we can delete the image:
+
+ubuntu@ubuntu:~$ docker rmi hello-world
+Untagged: hello-world:latest
+Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412
+Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359
+
+
+And just to confirm that it is actually deleted:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
+
+
+Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub:
+
+ubuntu@ubuntu:~$ docker pull ubuntu
+Using default tag: latest
+latest: Pulling from library/ubuntu
+f3ef4ff62e0d: Pull complete
+Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d
+Status: Downloaded newer image for ubuntu:latest
+docker.io/library/ubuntu:latest
+
+
+We can see that it was downloaded:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
+ubuntu       latest    597ce1600cf4   46 hours ago   72.8MB
+
+
+Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options:
+
+
+  -i –&gt; Interactive, Keep STDIN open even if not attached
+  -t –&gt; Allocate a pseudo-TTY
+
+
+While we are at it, we will assign a name to the container with the --name option.
+
+So our command becomes:
+
+docker run --name test -it ubuntu bash
+
+
+And then we see our prompt change. Now we can run some commands that are executed inside the container:
+
+ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash
+root@a843c11e5313:/# whoami
+root
+root@a843c11e5313:/# hostname
+a843c11e5313
+root@a843c11e5313:/# pwd
+/
+root@a843c11e5313:/# ls /
+bin  boot  dev  etc  home  lib  lib32  lib64  libx32  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+root@a843c11e5313:/# ls /home
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+
+
+The exit command kills the container executing in the foreground and returns us to our original prompt.
+
+List the container:
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED         STATUS                     PORTS     NAMES
+a843c11e5313   ubuntu    "bash"    4 minutes ago   Exited (0) 3 minutes ago             test
+
+
+We can run the container again by using the docker start command, remembering to pass in the interactive option:
+
+ubuntu@ubuntu:~$ docker start -i test
+root@a843c11e5313:/#
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+
+
+If we use the --rm option with the run command, it cleans up the container when the command passed into the container exits:
+
+docker run --name test2 -it --rm ubuntu ls
+
+
+In this case, the ls command runs in the container, and then the container exits:
+
+ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls
+bin   dev  home  lib32  libx32  mnt  proc  run   srv  tmp  var
+boot  etc  lib   lib64  media   opt  root  sbin  sys  usr
+ubuntu@ubuntu:~$
+
+
+Note that we named the container “test2” but when we run docker ps --all we do not see it listed, because of the --rm switch.
+
+
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND                  CREATED          STATUS                         PORTS     NAMES
+a843c11e5313   ubuntu    "bash"                   2 hours ago      Exited (0) About an hour ago             test
+
+
+Create a Custom Image
+The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html”
+
+mkdir html
+echo "Head in the Clouds" &gt; html/index.html
+
+
+
+With that done, we need to create a Dockerfile
+
+Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing  /usr/share/nginx/html
+
+echo 'FROM nginx' &gt; Dockerfile
+echo 'COPY html /usr/share/nginx/html' &gt;&gt; Dockerfile
+
+
+
+That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile:
+
+ubuntu@ubuntu:~$ cat Dockerfile
+FROM nginx
+COPY html /usr/share/nginx/html
+
+
+
+Now let’s build a custom image based on our Dockerfile:
+
+docker build -t hitc .
+
+
+Note that the “.” indicates “the current directory”
+
+ubuntu@ubuntu:~$ docker build -t hitc .
+Sending build context to Docker daemon  14.85kB
+Step 1/2 : FROM nginx
+latest: Pulling from library/nginx
+07aded7c29c6: Pull complete
+bbe0b7acc89c: Pull complete
+44ac32b0bba8: Pull complete
+91d6e3e593db: Pull complete
+8700267f2376: Pull complete
+4ce73aa6e9b0: Pull complete
+Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652
+Status: Downloaded newer image for nginx:latest
+ ---&gt; f8f4ffc8092c
+Step 2/2 : COPY html /usr/share/nginx/html
+ ---&gt; 995b0de5245b
+Successfully built 995b0de5245b
+Successfully tagged hitc:latest
+ubuntu@ubuntu:~$
+
+
+
+Now when we run docker images we see two new images along with the ‘ubuntu’ image from before:
+
+ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+hitc         latest    995b0de5245b   44 seconds ago   133MB
+ubuntu       latest    597ce1600cf4   47 hours ago     72.8MB
+nginx        latest    f8f4ffc8092c   4 days ago       133MB
+
+
+The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub.
+
+Ok, lets spin up a container from this image and see if we can hit with curl:
+
+docker run --name episode13 -d -p 8080:80 hitc
+
+
+And we get:
+
+ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc
+61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626
+ubuntu@ubuntu:~$ curl localhost:8080
+Head in the Clouds
+ubuntu@ubuntu:~$
+
+
+
+Note that the -d option ran the container in the background and the -p option maps port 8080 on the host to port 80 in the container.
+
+We can run docker ps to see that it is still running in the background:
+
+ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS                                   NAMES
+61747901bb59   hitc      "/docker-entrypoint.…"   5 minutes ago   Up 5 minutes   0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp   episode13
+
+
+If we want to see what processes are running inside the container, we can use docker top [CONTAINER] like so:
+
+ubuntu@ubuntu:~$ docker top episode13
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                10642               10616               0                   01:47               ?                   00:00:00            nginx: master process nginx -g daemon off;
+systemd+            10693               10642               0                   01:47               ?                   00:00:00            nginx: worker process
+
+
+
+If we stop the container, we will no longer be able to connect to port 8080:
+
+ubuntu@ubuntu:~$ docker stop episode13
+episode13
+ubuntu@ubuntu:~$ curl localhost:8080
+curl: (7) Failed to connect to localhost port 8080: Connection refused
+
+
+Wrap up
+
+Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta property="og:url" content="/episodes/episode13/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode13/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 13 - Docker Jumpstart | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 13 - Docker Jumpstart" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="13 - Docker Jumpstart Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Docker Jumpstart” Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode. Setup For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the Docker installation documentation. First, set up the repo by running the following commands: sudo apt-get update sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release Then add Docker’s official GPG key curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg echo &quot;deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable&quot; | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null Next, set up Docker Engine (Community Edition): sudo apt-get update sudo apt-get install -y docker-ce docker-ce-cli containerd.io Explore Docker Verify that there are no docker images on the local system: sudo docker images Note that if we try to run the docker images command with out sudo we get a permissions error: ubuntu@ubuntu:~$ docker images Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get &quot;http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json&quot;: dial unix /var/run/docker.sock: connect: permission denied We can fix that by adding the “ubuntu” user to the “docker” group: sudo usermod -aG docker ubuntu newgrp docker # Trick to load new group permissions Now we can run the Docker version of the classic ‘hello world’ test: ubuntu@ubuntu:~$ docker run hello-world Unable to find image &#39;hello-world:latest&#39; locally latest: Pulling from library/hello-world 2db29710123e: Pull complete Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf Status: Downloaded newer image for hello-world:latest Hello from Docker! This message shows that your installation appears to be working correctly. To generate this message, Docker took the following steps: 1. The Docker client contacted the Docker daemon. 2. The Docker daemon pulled the &quot;hello-world&quot; image from the Docker Hub. (amd64) 3. The Docker daemon created a new container from that image which runs the executable that produces the output you are currently reading. 4. The Docker daemon streamed that output to the Docker client, which sent it to your terminal. To try something more ambitious, you can run an Ubuntu container with: $ docker run -it ubuntu bash Share images, automate workflows, and more with a free Docker ID: https://hub.docker.com/ For more examples and ideas, visit: https://docs.docker.com/get-started/ Let’s rerun the docker images and see what changed: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE hello-world latest feb5d9fea6a5 8 days ago 13.3kB Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run docker help to see a list of all the possible docker commands. It looks like it would be docker rmi, so let’s try it: ubuntu@ubuntu:~$ docker rmi hello-world Error response from daemon: conflict: unable to remove repository reference &quot;hello-world&quot; (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5 Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using docker ps ubuntu@ubuntu:~$ docker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES Well, that didn’t show us what we wanted to see, let’s rerun it with the --all option: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 39c0bbdce667 hello-world &quot;/hello&quot; About a minute ago Exited (0) About a minute ago nifty_turing The --all option shows all containers, not just the running containers. (For more info see https://docs.docker.com/engine/reference/commandline/ps/) Now that we know the container id that is referencing our hello-world image, we can delete it using the docker rm command, as follows: docker rm 39c0bbdce667 Now if we rerun the docker ps --all command, we see that the container is gone: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES Once the container is zapped, we can delete the image: ubuntu@ubuntu:~$ docker rmi hello-world Untagged: hello-world:latest Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412 Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359 And just to confirm that it is actually deleted: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub: ubuntu@ubuntu:~$ docker pull ubuntu Using default tag: latest latest: Pulling from library/ubuntu f3ef4ff62e0d: Pull complete Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d Status: Downloaded newer image for ubuntu:latest docker.io/library/ubuntu:latest We can see that it was downloaded: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE ubuntu latest 597ce1600cf4 46 hours ago 72.8MB Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options: -i –&gt; Interactive, Keep STDIN open even if not attached -t –&gt; Allocate a pseudo-TTY While we are at it, we will assign a name to the container with the --name option. So our command becomes: docker run --name test -it ubuntu bash And then we see our prompt change. Now we can run some commands that are executed inside the container: ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash root@a843c11e5313:/# whoami root root@a843c11e5313:/# hostname a843c11e5313 root@a843c11e5313:/# pwd / root@a843c11e5313:/# ls / bin boot dev etc home lib lib32 lib64 libx32 media mnt opt proc root run sbin srv sys tmp usr var root@a843c11e5313:/# ls /home root@a843c11e5313:/# exit exit ubuntu@ubuntu:~$ The exit command kills the container executing in the foreground and returns us to our original prompt. List the container: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES a843c11e5313 ubuntu &quot;bash&quot; 4 minutes ago Exited (0) 3 minutes ago test We can run the container again by using the docker start command, remembering to pass in the interactive option: ubuntu@ubuntu:~$ docker start -i test root@a843c11e5313:/# root@a843c11e5313:/# exit exit ubuntu@ubuntu:~$ If we use the --rm option with the run command, it cleans up the container when the command passed into the container exits: docker run --name test2 -it --rm ubuntu ls In this case, the ls command runs in the container, and then the container exits: ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls bin dev home lib32 libx32 mnt proc run srv tmp var boot etc lib lib64 media opt root sbin sys usr ubuntu@ubuntu:~$ Note that we named the container “test2” but when we run docker ps --all we do not see it listed, because of the --rm switch. ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES a843c11e5313 ubuntu &quot;bash&quot; 2 hours ago Exited (0) About an hour ago test Create a Custom Image The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html” mkdir html echo &quot;Head in the Clouds&quot; &gt; html/index.html With that done, we need to create a Dockerfile Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing /usr/share/nginx/html echo &#39;FROM nginx&#39; &gt; Dockerfile echo &#39;COPY html /usr/share/nginx/html&#39; &gt;&gt; Dockerfile That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile: ubuntu@ubuntu:~$ cat Dockerfile FROM nginx COPY html /usr/share/nginx/html Now let’s build a custom image based on our Dockerfile: docker build -t hitc . Note that the “.” indicates “the current directory” ubuntu@ubuntu:~$ docker build -t hitc . Sending build context to Docker daemon 14.85kB Step 1/2 : FROM nginx latest: Pulling from library/nginx 07aded7c29c6: Pull complete bbe0b7acc89c: Pull complete 44ac32b0bba8: Pull complete 91d6e3e593db: Pull complete 8700267f2376: Pull complete 4ce73aa6e9b0: Pull complete Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652 Status: Downloaded newer image for nginx:latest ---&gt; f8f4ffc8092c Step 2/2 : COPY html /usr/share/nginx/html ---&gt; 995b0de5245b Successfully built 995b0de5245b Successfully tagged hitc:latest ubuntu@ubuntu:~$ Now when we run docker images we see two new images along with the ‘ubuntu’ image from before: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE hitc latest 995b0de5245b 44 seconds ago 133MB ubuntu latest 597ce1600cf4 47 hours ago 72.8MB nginx latest f8f4ffc8092c 4 days ago 133MB The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub. Ok, lets spin up a container from this image and see if we can hit with curl: docker run --name episode13 -d -p 8080:80 hitc And we get: ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc 61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626 ubuntu@ubuntu:~$ curl localhost:8080 Head in the Clouds ubuntu@ubuntu:~$ Note that the -d option ran the container in the background and the -p option maps port 8080 on the host to port 80 in the container. We can run docker ps to see that it is still running in the background: ubuntu@ubuntu:~$ docker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 61747901bb59 hitc &quot;/docker-entrypoint.…&quot; 5 minutes ago Up 5 minutes 0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp episode13 If we want to see what processes are running inside the container, we can use docker top [CONTAINER] like so: ubuntu@ubuntu:~$ docker top episode13 UID PID PPID C STIME TTY TIME CMD root 10642 10616 0 01:47 ? 00:00:00 nginx: master process nginx -g daemon off; systemd+ 10693 10642 0 01:47 ? 00:00:00 nginx: worker process If we stop the container, we will no longer be able to connect to port 8080: ubuntu@ubuntu:~$ docker stop episode13 episode13 ubuntu@ubuntu:~$ curl localhost:8080 curl: (7) Failed to connect to localhost port 8080: Connection refused Wrap up Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<meta property="og:description" content="13 - Docker Jumpstart Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Docker Jumpstart” Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode. Setup For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the Docker installation documentation. First, set up the repo by running the following commands: sudo apt-get update sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release Then add Docker’s official GPG key curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg echo &quot;deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable&quot; | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null Next, set up Docker Engine (Community Edition): sudo apt-get update sudo apt-get install -y docker-ce docker-ce-cli containerd.io Explore Docker Verify that there are no docker images on the local system: sudo docker images Note that if we try to run the docker images command with out sudo we get a permissions error: ubuntu@ubuntu:~$ docker images Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get &quot;http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json&quot;: dial unix /var/run/docker.sock: connect: permission denied We can fix that by adding the “ubuntu” user to the “docker” group: sudo usermod -aG docker ubuntu newgrp docker # Trick to load new group permissions Now we can run the Docker version of the classic ‘hello world’ test: ubuntu@ubuntu:~$ docker run hello-world Unable to find image &#39;hello-world:latest&#39; locally latest: Pulling from library/hello-world 2db29710123e: Pull complete Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf Status: Downloaded newer image for hello-world:latest Hello from Docker! This message shows that your installation appears to be working correctly. To generate this message, Docker took the following steps: 1. The Docker client contacted the Docker daemon. 2. The Docker daemon pulled the &quot;hello-world&quot; image from the Docker Hub. (amd64) 3. The Docker daemon created a new container from that image which runs the executable that produces the output you are currently reading. 4. The Docker daemon streamed that output to the Docker client, which sent it to your terminal. To try something more ambitious, you can run an Ubuntu container with: $ docker run -it ubuntu bash Share images, automate workflows, and more with a free Docker ID: https://hub.docker.com/ For more examples and ideas, visit: https://docs.docker.com/get-started/ Let’s rerun the docker images and see what changed: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE hello-world latest feb5d9fea6a5 8 days ago 13.3kB Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run docker help to see a list of all the possible docker commands. It looks like it would be docker rmi, so let’s try it: ubuntu@ubuntu:~$ docker rmi hello-world Error response from daemon: conflict: unable to remove repository reference &quot;hello-world&quot; (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5 Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using docker ps ubuntu@ubuntu:~$ docker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES Well, that didn’t show us what we wanted to see, let’s rerun it with the --all option: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 39c0bbdce667 hello-world &quot;/hello&quot; About a minute ago Exited (0) About a minute ago nifty_turing The --all option shows all containers, not just the running containers. (For more info see https://docs.docker.com/engine/reference/commandline/ps/) Now that we know the container id that is referencing our hello-world image, we can delete it using the docker rm command, as follows: docker rm 39c0bbdce667 Now if we rerun the docker ps --all command, we see that the container is gone: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES Once the container is zapped, we can delete the image: ubuntu@ubuntu:~$ docker rmi hello-world Untagged: hello-world:latest Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412 Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359 And just to confirm that it is actually deleted: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub: ubuntu@ubuntu:~$ docker pull ubuntu Using default tag: latest latest: Pulling from library/ubuntu f3ef4ff62e0d: Pull complete Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d Status: Downloaded newer image for ubuntu:latest docker.io/library/ubuntu:latest We can see that it was downloaded: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE ubuntu latest 597ce1600cf4 46 hours ago 72.8MB Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options: -i –&gt; Interactive, Keep STDIN open even if not attached -t –&gt; Allocate a pseudo-TTY While we are at it, we will assign a name to the container with the --name option. So our command becomes: docker run --name test -it ubuntu bash And then we see our prompt change. Now we can run some commands that are executed inside the container: ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash root@a843c11e5313:/# whoami root root@a843c11e5313:/# hostname a843c11e5313 root@a843c11e5313:/# pwd / root@a843c11e5313:/# ls / bin boot dev etc home lib lib32 lib64 libx32 media mnt opt proc root run sbin srv sys tmp usr var root@a843c11e5313:/# ls /home root@a843c11e5313:/# exit exit ubuntu@ubuntu:~$ The exit command kills the container executing in the foreground and returns us to our original prompt. List the container: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES a843c11e5313 ubuntu &quot;bash&quot; 4 minutes ago Exited (0) 3 minutes ago test We can run the container again by using the docker start command, remembering to pass in the interactive option: ubuntu@ubuntu:~$ docker start -i test root@a843c11e5313:/# root@a843c11e5313:/# exit exit ubuntu@ubuntu:~$ If we use the --rm option with the run command, it cleans up the container when the command passed into the container exits: docker run --name test2 -it --rm ubuntu ls In this case, the ls command runs in the container, and then the container exits: ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls bin dev home lib32 libx32 mnt proc run srv tmp var boot etc lib lib64 media opt root sbin sys usr ubuntu@ubuntu:~$ Note that we named the container “test2” but when we run docker ps --all we do not see it listed, because of the --rm switch. ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES a843c11e5313 ubuntu &quot;bash&quot; 2 hours ago Exited (0) About an hour ago test Create a Custom Image The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html” mkdir html echo &quot;Head in the Clouds&quot; &gt; html/index.html With that done, we need to create a Dockerfile Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing /usr/share/nginx/html echo &#39;FROM nginx&#39; &gt; Dockerfile echo &#39;COPY html /usr/share/nginx/html&#39; &gt;&gt; Dockerfile That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile: ubuntu@ubuntu:~$ cat Dockerfile FROM nginx COPY html /usr/share/nginx/html Now let’s build a custom image based on our Dockerfile: docker build -t hitc . Note that the “.” indicates “the current directory” ubuntu@ubuntu:~$ docker build -t hitc . Sending build context to Docker daemon 14.85kB Step 1/2 : FROM nginx latest: Pulling from library/nginx 07aded7c29c6: Pull complete bbe0b7acc89c: Pull complete 44ac32b0bba8: Pull complete 91d6e3e593db: Pull complete 8700267f2376: Pull complete 4ce73aa6e9b0: Pull complete Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652 Status: Downloaded newer image for nginx:latest ---&gt; f8f4ffc8092c Step 2/2 : COPY html /usr/share/nginx/html ---&gt; 995b0de5245b Successfully built 995b0de5245b Successfully tagged hitc:latest ubuntu@ubuntu:~$ Now when we run docker images we see two new images along with the ‘ubuntu’ image from before: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE hitc latest 995b0de5245b 44 seconds ago 133MB ubuntu latest 597ce1600cf4 47 hours ago 72.8MB nginx latest f8f4ffc8092c 4 days ago 133MB The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub. Ok, lets spin up a container from this image and see if we can hit with curl: docker run --name episode13 -d -p 8080:80 hitc And we get: ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc 61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626 ubuntu@ubuntu:~$ curl localhost:8080 Head in the Clouds ubuntu@ubuntu:~$ Note that the -d option ran the container in the background and the -p option maps port 8080 on the host to port 80 in the container. We can run docker ps to see that it is still running in the background: ubuntu@ubuntu:~$ docker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 61747901bb59 hitc &quot;/docker-entrypoint.…&quot; 5 minutes ago Up 5 minutes 0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp episode13 If we want to see what processes are running inside the container, we can use docker top [CONTAINER] like so: ubuntu@ubuntu:~$ docker top episode13 UID PID PPID C STIME TTY TIME CMD root 10642 10616 0 01:47 ? 00:00:00 nginx: master process nginx -g daemon off; systemd+ 10693 10642 0 01:47 ? 00:00:00 nginx: worker process If we stop the container, we will no longer be able to connect to port 8080: ubuntu@ubuntu:~$ docker stop episode13 episode13 ubuntu@ubuntu:~$ curl localhost:8080 curl: (7) Failed to connect to localhost port 8080: Connection refused Wrap up Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode13/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode13/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 13 - Docker Jumpstart" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:39-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"13 - Docker Jumpstart Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Docker Jumpstart” Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode. Setup For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the Docker installation documentation. First, set up the repo by running the following commands: sudo apt-get update sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release Then add Docker’s official GPG key curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg echo &quot;deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable&quot; | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null Next, set up Docker Engine (Community Edition): sudo apt-get update sudo apt-get install -y docker-ce docker-ce-cli containerd.io Explore Docker Verify that there are no docker images on the local system: sudo docker images Note that if we try to run the docker images command with out sudo we get a permissions error: ubuntu@ubuntu:~$ docker images Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get &quot;http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json&quot;: dial unix /var/run/docker.sock: connect: permission denied We can fix that by adding the “ubuntu” user to the “docker” group: sudo usermod -aG docker ubuntu newgrp docker # Trick to load new group permissions Now we can run the Docker version of the classic ‘hello world’ test: ubuntu@ubuntu:~$ docker run hello-world Unable to find image &#39;hello-world:latest&#39; locally latest: Pulling from library/hello-world 2db29710123e: Pull complete Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf Status: Downloaded newer image for hello-world:latest Hello from Docker! This message shows that your installation appears to be working correctly. To generate this message, Docker took the following steps: 1. The Docker client contacted the Docker daemon. 2. The Docker daemon pulled the &quot;hello-world&quot; image from the Docker Hub. (amd64) 3. The Docker daemon created a new container from that image which runs the executable that produces the output you are currently reading. 4. The Docker daemon streamed that output to the Docker client, which sent it to your terminal. To try something more ambitious, you can run an Ubuntu container with: $ docker run -it ubuntu bash Share images, automate workflows, and more with a free Docker ID: https://hub.docker.com/ For more examples and ideas, visit: https://docs.docker.com/get-started/ Let’s rerun the docker images and see what changed: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE hello-world latest feb5d9fea6a5 8 days ago 13.3kB Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run docker help to see a list of all the possible docker commands. It looks like it would be docker rmi, so let’s try it: ubuntu@ubuntu:~$ docker rmi hello-world Error response from daemon: conflict: unable to remove repository reference &quot;hello-world&quot; (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5 Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using docker ps ubuntu@ubuntu:~$ docker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES Well, that didn’t show us what we wanted to see, let’s rerun it with the --all option: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 39c0bbdce667 hello-world &quot;/hello&quot; About a minute ago Exited (0) About a minute ago nifty_turing The --all option shows all containers, not just the running containers. (For more info see https://docs.docker.com/engine/reference/commandline/ps/) Now that we know the container id that is referencing our hello-world image, we can delete it using the docker rm command, as follows: docker rm 39c0bbdce667 Now if we rerun the docker ps --all command, we see that the container is gone: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES Once the container is zapped, we can delete the image: ubuntu@ubuntu:~$ docker rmi hello-world Untagged: hello-world:latest Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412 Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359 And just to confirm that it is actually deleted: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub: ubuntu@ubuntu:~$ docker pull ubuntu Using default tag: latest latest: Pulling from library/ubuntu f3ef4ff62e0d: Pull complete Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d Status: Downloaded newer image for ubuntu:latest docker.io/library/ubuntu:latest We can see that it was downloaded: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE ubuntu latest 597ce1600cf4 46 hours ago 72.8MB Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options: -i –&gt; Interactive, Keep STDIN open even if not attached -t –&gt; Allocate a pseudo-TTY While we are at it, we will assign a name to the container with the --name option. So our command becomes: docker run --name test -it ubuntu bash And then we see our prompt change. Now we can run some commands that are executed inside the container: ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash root@a843c11e5313:/# whoami root root@a843c11e5313:/# hostname a843c11e5313 root@a843c11e5313:/# pwd / root@a843c11e5313:/# ls / bin boot dev etc home lib lib32 lib64 libx32 media mnt opt proc root run sbin srv sys tmp usr var root@a843c11e5313:/# ls /home root@a843c11e5313:/# exit exit ubuntu@ubuntu:~$ The exit command kills the container executing in the foreground and returns us to our original prompt. List the container: ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES a843c11e5313 ubuntu &quot;bash&quot; 4 minutes ago Exited (0) 3 minutes ago test We can run the container again by using the docker start command, remembering to pass in the interactive option: ubuntu@ubuntu:~$ docker start -i test root@a843c11e5313:/# root@a843c11e5313:/# exit exit ubuntu@ubuntu:~$ If we use the --rm option with the run command, it cleans up the container when the command passed into the container exits: docker run --name test2 -it --rm ubuntu ls In this case, the ls command runs in the container, and then the container exits: ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls bin dev home lib32 libx32 mnt proc run srv tmp var boot etc lib lib64 media opt root sbin sys usr ubuntu@ubuntu:~$ Note that we named the container “test2” but when we run docker ps --all we do not see it listed, because of the --rm switch. ubuntu@ubuntu:~$ docker ps --all CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES a843c11e5313 ubuntu &quot;bash&quot; 2 hours ago Exited (0) About an hour ago test Create a Custom Image The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html” mkdir html echo &quot;Head in the Clouds&quot; &gt; html/index.html With that done, we need to create a Dockerfile Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing /usr/share/nginx/html echo &#39;FROM nginx&#39; &gt; Dockerfile echo &#39;COPY html /usr/share/nginx/html&#39; &gt;&gt; Dockerfile That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile: ubuntu@ubuntu:~$ cat Dockerfile FROM nginx COPY html /usr/share/nginx/html Now let’s build a custom image based on our Dockerfile: docker build -t hitc . Note that the “.” indicates “the current directory” ubuntu@ubuntu:~$ docker build -t hitc . Sending build context to Docker daemon 14.85kB Step 1/2 : FROM nginx latest: Pulling from library/nginx 07aded7c29c6: Pull complete bbe0b7acc89c: Pull complete 44ac32b0bba8: Pull complete 91d6e3e593db: Pull complete 8700267f2376: Pull complete 4ce73aa6e9b0: Pull complete Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652 Status: Downloaded newer image for nginx:latest ---&gt; f8f4ffc8092c Step 2/2 : COPY html /usr/share/nginx/html ---&gt; 995b0de5245b Successfully built 995b0de5245b Successfully tagged hitc:latest ubuntu@ubuntu:~$ Now when we run docker images we see two new images along with the ‘ubuntu’ image from before: ubuntu@ubuntu:~$ docker images REPOSITORY TAG IMAGE ID CREATED SIZE hitc latest 995b0de5245b 44 seconds ago 133MB ubuntu latest 597ce1600cf4 47 hours ago 72.8MB nginx latest f8f4ffc8092c 4 days ago 133MB The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub. Ok, lets spin up a container from this image and see if we can hit with curl: docker run --name episode13 -d -p 8080:80 hitc And we get: ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc 61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626 ubuntu@ubuntu:~$ curl localhost:8080 Head in the Clouds ubuntu@ubuntu:~$ Note that the -d option ran the container in the background and the -p option maps port 8080 on the host to port 80 in the container. We can run docker ps to see that it is still running in the background: ubuntu@ubuntu:~$ docker ps CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES 61747901bb59 hitc &quot;/docker-entrypoint.…&quot; 5 minutes ago Up 5 minutes 0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp episode13 If we want to see what processes are running inside the container, we can use docker top [CONTAINER] like so: ubuntu@ubuntu:~$ docker top episode13 UID PID PPID C STIME TTY TIME CMD root 10642 10616 0 01:47 ? 00:00:00 nginx: master process nginx -g daemon off; systemd+ 10693 10642 0 01:47 ? 00:00:00 nginx: worker process If we stop the container, we will no longer be able to connect to port 8080: ubuntu@ubuntu:~$ docker stop episode13 episode13 ubuntu@ubuntu:~$ curl localhost:8080 curl: (7) Failed to connect to localhost port 8080: Connection refused Wrap up Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care.","headline":"Episode 13 - Docker Jumpstart","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode13/"},"url":"http://localhost:4000/episodes/episode13/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 13 - Docker Jumpstart</h1>
+    <div class="article-wrap">
+      <p>13 - Docker Jumpstart</p>
+
+<div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/k2pkDX5o4no" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to Episode 13 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “Docker Jumpstart”</p>
+
+<p>Many folks that work in information security know that they should learn about Docker, and keep meaning to do so, but for some reason have not entered the foray. If you fall into that category, well jump right in and follow along with this episode.</p>
+
+<h2 id="setup">Setup</h2>
+
+<p>For this episode, we will assume that you have a fresh Ubuntu 20.01 virtual machine running and have a SSH connection to it. For your reference, this section follows the steps outlined in the <a href="https://docs.docker.com/engine/install/ubuntu/#installation-methods">Docker installation documentation</a>.</p>
+
+<p>First, set up the repo by running the following commands:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+</code></pre></div></div>
+
+<p>Then add Docker’s official GPG key</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null
+
+</code></pre></div></div>
+
+<p>Next, set up Docker Engine (Community Edition):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+</code></pre></div></div>
+
+<h2 id="explore-docker">Explore Docker</h2>
+
+<p>Verify that there are no docker images on the local system:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo docker images
+</code></pre></div></div>
+
+<p>Note that if we try to run the <code class="language-plaintext highlighter-rouge">docker images</code> command with out sudo we get a permissions error:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker images
+Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.24/images/json": dial unix /var/run/docker.sock: connect: permission denied
+</code></pre></div></div>
+
+<p>We can fix that by adding the “ubuntu” user to the “docker” group:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo usermod -aG docker ubuntu
+newgrp docker       # Trick to load new group permissions
+</code></pre></div></div>
+
+<p>Now we can run the Docker version of the classic ‘hello world’ test:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+2db29710123e: Pull complete
+Digest: sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/get-started/
+
+</code></pre></div></div>
+
+<p>Let’s rerun the <code class="language-plaintext highlighter-rouge">docker images</code> and see what changed:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker images
+REPOSITORY    TAG       IMAGE ID       CREATED      SIZE
+hello-world   latest    feb5d9fea6a5   8 days ago   13.3kB
+
+</code></pre></div></div>
+
+<p>Ok, great. We don’t need that image around anymore. So what command do we need to delete the image? Run <code class="language-plaintext highlighter-rouge">docker help</code> to see a list of all the possible docker commands.</p>
+
+<p>It looks like it would be <code class="language-plaintext highlighter-rouge">docker rmi</code>, so let’s try it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker rmi hello-world
+Error response from daemon: conflict: unable to remove repository reference "hello-world" (must force) - container 39c0bbdce667 is using its referenced image feb5d9fea6a5
+</code></pre></div></div>
+
+<p>Well, that didn’t work. We can’t remove the image while there is a container referencing it. Let’s see what containers are running, using <code class="language-plaintext highlighter-rouge">docker ps</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+</code></pre></div></div>
+
+<p>Well, that didn’t show us what we wanted to see, let’s rerun it with the <code class="language-plaintext highlighter-rouge">--all</code> option:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE         COMMAND    CREATED              STATUS                          PORTS     NAMES
+39c0bbdce667   hello-world   "/hello"   About a minute ago   Exited (0) About a minute ago             nifty_turing
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">--all</code> option shows all containers, not just the running containers. (For more info see <a href="https://docs.docker.com/engine/reference/commandline/ps/">https://docs.docker.com/engine/reference/commandline/ps/</a>)</p>
+
+<p>Now that we know the container id that is referencing our <code class="language-plaintext highlighter-rouge">hello-world</code> image, we can delete it using the <code class="language-plaintext highlighter-rouge">docker rm</code> command, as follows:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker rm 39c0bbdce667
+</code></pre></div></div>
+
+<p>Now if we rerun the <code class="language-plaintext highlighter-rouge">docker ps --all</code> command, we see that the container is gone:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+</code></pre></div></div>
+
+<p>Once the container is zapped, we can delete the image:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker rmi hello-world
+Untagged: hello-world:latest
+Untagged: hello-world@sha256:9ade9cc2e26189a19c2e8854b9c8f1e14829b51c55a630ee675a5a9540ef6ccf
+Deleted: sha256:feb5d9fea6a5e9606aa995e879d862b825965ba48de054caab5ef356dc6b3412
+Deleted: sha256:e07ee1baac5fae6a26f30cabfe54a36d3402f96afda318fe0a96cec4ca393359
+</code></pre></div></div>
+
+<p>And just to confirm that it is actually deleted:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
+</code></pre></div></div>
+
+<p>Great, now let’s pull down a different image. Let’s pull down the official Ubuntu container image from Docker hub:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker pull ubuntu
+Using default tag: latest
+latest: Pulling from library/ubuntu
+f3ef4ff62e0d: Pull complete
+Digest: sha256:44ab2c3b26363823dcb965498ab06abf74a1e6af20a732902250743df0d4172d
+Status: Downloaded newer image for ubuntu:latest
+docker.io/library/ubuntu:latest
+</code></pre></div></div>
+
+<p>We can see that it was downloaded:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
+ubuntu       latest    597ce1600cf4   46 hours ago   72.8MB
+</code></pre></div></div>
+
+<p>Next, let’s run the container in an interactive mode so that we execute various commands from the bash shell within the container. To do that, we need two options:</p>
+
+<ul>
+  <li>-i –&gt; Interactive, Keep STDIN open even if not attached</li>
+  <li>-t –&gt; Allocate a pseudo-TTY</li>
+</ul>
+
+<p>While we are at it, we will assign a name to the container with the <code class="language-plaintext highlighter-rouge">--name</code> option.</p>
+
+<p>So our command becomes:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run --name test -it ubuntu bash
+</code></pre></div></div>
+
+<p>And then we see our prompt change. Now we can run some commands that are executed inside the container:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker run --name test -it ubuntu bash
+root@a843c11e5313:/# whoami
+root
+root@a843c11e5313:/# hostname
+a843c11e5313
+root@a843c11e5313:/# pwd
+/
+root@a843c11e5313:/# ls /
+bin  boot  dev  etc  home  lib  lib32  lib64  libx32  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+root@a843c11e5313:/# ls /home
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">exit</code> command kills the container executing in the foreground and returns us to our original prompt.</p>
+
+<p>List the container:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND   CREATED         STATUS                     PORTS     NAMES
+a843c11e5313   ubuntu    "bash"    4 minutes ago   Exited (0) 3 minutes ago             test
+</code></pre></div></div>
+
+<p>We can run the container again by using the <code class="language-plaintext highlighter-rouge">docker start</code> command, remembering to pass in the interactive option:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker start -i test
+root@a843c11e5313:/#
+root@a843c11e5313:/# exit
+exit
+ubuntu@ubuntu:~$
+</code></pre></div></div>
+
+<p>If we use the <code class="language-plaintext highlighter-rouge">--rm</code> option with the run command, it cleans up the container when the command passed into the container exits:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run --name test2 -it --rm ubuntu ls
+</code></pre></div></div>
+
+<p>In this case, the ls command runs in the container, and then the container exits:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker run --name test2 -it --rm ubuntu ls
+bin   dev  home  lib32  libx32  mnt  proc  run   srv  tmp  var
+boot  etc  lib   lib64  media   opt  root  sbin  sys  usr
+ubuntu@ubuntu:~$
+</code></pre></div></div>
+
+<p>Note that we named the container “test2” but when we run <code class="language-plaintext highlighter-rouge">docker ps --all</code> we do not see it listed, because of the <code class="language-plaintext highlighter-rouge">--rm</code> switch.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+ubuntu@ubuntu:~$ docker ps --all
+CONTAINER ID   IMAGE     COMMAND                  CREATED          STATUS                         PORTS     NAMES
+a843c11e5313   ubuntu    "bash"                   2 hours ago      Exited (0) About an hour ago             test
+</code></pre></div></div>
+
+<h2 id="create-a-custom-image">Create a Custom Image</h2>
+<p>The most common use case for docker is to run web services, so let’s create a simple web server to illustrate some important concepts. First, lets create a basic web page called “index.html” in a directory called “html”</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mkdir html
+echo "Head in the Clouds" &gt; html/index.html
+
+</code></pre></div></div>
+
+<p>With that done, we need to create a <code class="language-plaintext highlighter-rouge">Dockerfile</code></p>
+
+<p>Images are typically built from a base image adding and removing stuff as needed. Our base image will be ‘nginx’ since it already has the web server installed. Then we will copy our “html” folder onto the image stomping on the existing  /usr/share/nginx/html</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 'FROM nginx' &gt; Dockerfile
+echo 'COPY html /usr/share/nginx/html' &gt;&gt; Dockerfile
+
+</code></pre></div></div>
+
+<p>That creates our Dockerfile, thanks to the magic of file redirection. Double-checking our Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ cat Dockerfile
+FROM nginx
+COPY html /usr/share/nginx/html
+
+</code></pre></div></div>
+
+<p>Now let’s build a custom image based on our Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker build -t hitc .
+</code></pre></div></div>
+
+<p>Note that the “.” indicates “the current directory”</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker build -t hitc .
+Sending build context to Docker daemon  14.85kB
+Step 1/2 : FROM nginx
+latest: Pulling from library/nginx
+07aded7c29c6: Pull complete
+bbe0b7acc89c: Pull complete
+44ac32b0bba8: Pull complete
+91d6e3e593db: Pull complete
+8700267f2376: Pull complete
+4ce73aa6e9b0: Pull complete
+Digest: sha256:765e51caa9e739220d59c7f7a75508e77361b441dccf128483b7f5cce8306652
+Status: Downloaded newer image for nginx:latest
+ ---&gt; f8f4ffc8092c
+Step 2/2 : COPY html /usr/share/nginx/html
+ ---&gt; 995b0de5245b
+Successfully built 995b0de5245b
+Successfully tagged hitc:latest
+ubuntu@ubuntu:~$
+
+</code></pre></div></div>
+
+<p>Now when we run <code class="language-plaintext highlighter-rouge">docker images</code> we see two new images along with the ‘ubuntu’ image from before:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+hitc         latest    995b0de5245b   44 seconds ago   133MB
+ubuntu       latest    597ce1600cf4   47 hours ago     72.8MB
+nginx        latest    f8f4ffc8092c   4 days ago       133MB
+</code></pre></div></div>
+
+<p>The “hitc” is the image that we just created, and it is derived from the “nginx” image referenced in the Dockerfile. Because it was referenced, Docker pulled down a local copy from Docker Hub.</p>
+
+<p>Ok, lets spin up a container from this image and see if we can hit with curl:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run --name episode13 -d -p 8080:80 hitc
+</code></pre></div></div>
+
+<p>And we get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker run --name episode13 -d -p 8080:80 hitc
+61747901bb594c88ec03736a50886985b404aca4a4a3d85b2b9608d190a8c626
+ubuntu@ubuntu:~$ curl localhost:8080
+Head in the Clouds
+ubuntu@ubuntu:~$
+
+</code></pre></div></div>
+
+<p>Note that the <code class="language-plaintext highlighter-rouge">-d</code> option ran the container in the background and the <code class="language-plaintext highlighter-rouge">-p</code> option maps port 8080 on the host to port 80 in the container.</p>
+
+<p>We can run <code class="language-plaintext highlighter-rouge">docker ps</code> to see that it is still running in the background:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker ps
+CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS                                   NAMES
+61747901bb59   hitc      "/docker-entrypoint.…"   5 minutes ago   Up 5 minutes   0.0.0.0:8080-&gt;80/tcp, :::8080-&gt;80/tcp   episode13
+</code></pre></div></div>
+
+<p>If we want to see what processes are running inside the container, we can use <code class="language-plaintext highlighter-rouge">docker top [CONTAINER]</code> like so:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker top episode13
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+root                10642               10616               0                   01:47               ?                   00:00:00            nginx: master process nginx -g daemon off;
+systemd+            10693               10642               0                   01:47               ?                   00:00:00            nginx: worker process
+
+</code></pre></div></div>
+
+<p>If we stop the container, we will no longer be able to connect to port 8080:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ubuntu@ubuntu:~$ docker stop episode13
+episode13
+ubuntu@ubuntu:~$ curl localhost:8080
+curl: (7) Failed to connect to localhost port 8080: Connection refused
+</code></pre></div></div>
+
+<h2 id="wrap-up">Wrap up</h2>
+
+<p>Well, there you go. We installed Docker Engine Community Edition, learned some basic Docker commands, and launched a very basic website. Hopefully this video has removed any reasons you may have had to procrastinate and inspired you to jump in and play. Of course there is much more to learn and many additional tutorials that are just an internet search away. In our next episode, we will build on this foundation and create a Docker image that will have utility for members of this audience as we continue to explore the cloud.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode13/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode13/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode13/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>

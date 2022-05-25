@@ -1,0 +1,835 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<html>
+<head>
+<meta charset="utf-8">
+
+
+<title>Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP &mdash; Head in the Clouds</title>
+<meta name="description" content="7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP
+
+
+
+Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom!
+
+Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: SEC488: Cloud Security Essentials and SANS SEC510: Public Cloud Security - AWS, Azure, and GCP. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on.
+
+Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction.
+
+Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is OWASP Zed Attack Proxy (ZAP). As I worked on this project, it occurred that this would make a great Head in the clouds episode topic.
+
+CAUTION: It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work.
+
+
+
+In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!)
+
+Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report.
+
+Setting Up a Cloud Workstation
+
+Since this is Head in the Clouds, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration.
+
+NOTE: Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section.
+
+To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown:
+
+which terraform
+which git
+git clone https://github.com/Resistor52/tf-cloud-workstation.git
+cp terraform.tfvars.example terraform.tfvars
+
+
+Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this cloud-based workstation in depth.
+
+Next, run the following two commands and type ‘yes’ when prompted:
+
+terraform init
+terraform apply
+
+
+When the terraform script is done, it will display output that looks like:
+
+
+
+Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs.
+
+I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run
+
+tail -f /tmp/first-boot.log
+
+
+Review SaaS Provider’s ToS and AUP
+
+While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute.
+
+
+  Dropbox Terms of Service - https://www.dropbox.com/terms
+  Dropbox Acceptable Use Policy – https://www.dropbox.com/acceptable_use
+
+
+A quick review of the AUP indicates that Dropbox.com has a public Bug Bounty Program. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted.
+
+Installing the Zed Attack proxy
+
+Once we have an Ubuntu workstation running, we need to install Java…
+
+# Install OpenJDK Java
+sudo apt install -y default-jre
+
+
+and ZAP:
+
+# https://www.zaproxy.org/download/
+cd /tmp
+wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh
+sudo bash ZAP_2_10_0_unix.sh
+
+
+As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation.
+
+Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type:
+
+terraform output
+
+
+Great. Now RDP into the IP address shown using the displayed temporary credentials.
+
+Using ZAP
+
+Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox.
+
+To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it.
+
+Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being.
+
+Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. Only use the automated scan with permission or systems that you own and preferably in a non-production environment.
+
+Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session.
+
+In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.”
+
+We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org.
+
+Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.)
+
+Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox.
+
+Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com”
+
+Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings.
+
+Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form!
+
+Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it.
+
+Wrap Up
+
+That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings:
+
+
+  Missing security headers which do not lead directly to a vulnerability.
+  Missing best practices (we require evidence of a security vulnerability).
+  Use of a known-vulnerable library (without evidence of exploitability).
+
+
+It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here.
+
+Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization.
+
+SANS Has a whole course on Wep Application penetration Testing (SEC542) and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider.
+
+SANS also has a new course and certification on Cloud Penetration Testing, SEC588. Check that one out too.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="keywords" content="">
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP">
+<meta name="twitter:description" content="7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP
+
+
+
+Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom!
+
+Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: SEC488: Cloud Security Essentials and SANS SEC510: Public Cloud Security - AWS, Azure, and GCP. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on.
+
+Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction.
+
+Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is OWASP Zed Attack Proxy (ZAP). As I worked on this project, it occurred that this would make a great Head in the clouds episode topic.
+
+CAUTION: It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work.
+
+
+
+In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!)
+
+Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report.
+
+Setting Up a Cloud Workstation
+
+Since this is Head in the Clouds, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration.
+
+NOTE: Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section.
+
+To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown:
+
+which terraform
+which git
+git clone https://github.com/Resistor52/tf-cloud-workstation.git
+cp terraform.tfvars.example terraform.tfvars
+
+
+Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this cloud-based workstation in depth.
+
+Next, run the following two commands and type ‘yes’ when prompted:
+
+terraform init
+terraform apply
+
+
+When the terraform script is done, it will display output that looks like:
+
+
+
+Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs.
+
+I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run
+
+tail -f /tmp/first-boot.log
+
+
+Review SaaS Provider’s ToS and AUP
+
+While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute.
+
+
+  Dropbox Terms of Service - https://www.dropbox.com/terms
+  Dropbox Acceptable Use Policy – https://www.dropbox.com/acceptable_use
+
+
+A quick review of the AUP indicates that Dropbox.com has a public Bug Bounty Program. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted.
+
+Installing the Zed Attack proxy
+
+Once we have an Ubuntu workstation running, we need to install Java…
+
+# Install OpenJDK Java
+sudo apt install -y default-jre
+
+
+and ZAP:
+
+# https://www.zaproxy.org/download/
+cd /tmp
+wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh
+sudo bash ZAP_2_10_0_unix.sh
+
+
+As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation.
+
+Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type:
+
+terraform output
+
+
+Great. Now RDP into the IP address shown using the displayed temporary credentials.
+
+Using ZAP
+
+Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox.
+
+To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it.
+
+Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being.
+
+Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. Only use the automated scan with permission or systems that you own and preferably in a non-production environment.
+
+Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session.
+
+In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.”
+
+We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org.
+
+Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.)
+
+Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox.
+
+Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com”
+
+Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings.
+
+Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form!
+
+Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it.
+
+Wrap Up
+
+That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings:
+
+
+  Missing security headers which do not lead directly to a vulnerability.
+  Missing best practices (we require evidence of a security vulnerability).
+  Use of a known-vulnerable library (without evidence of exploitability).
+
+
+It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here.
+
+Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization.
+
+SANS Has a whole course on Wep Application penetration Testing (SEC542) and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider.
+
+SANS also has a new course and certification on Cloud Penetration Testing, SEC588. Check that one out too.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta name="twitter:site" content="@kennethghartman">
+<meta name="twitter:creator" content="@kennethghartman">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="/images/default-thumb.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP">
+<meta property="og:description" content="7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP
+
+
+
+Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.
+
+Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP”
+
+The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.
+
+Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom!
+
+Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: SEC488: Cloud Security Essentials and SANS SEC510: Public Cloud Security - AWS, Azure, and GCP. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on.
+
+Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction.
+
+Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is OWASP Zed Attack Proxy (ZAP). As I worked on this project, it occurred that this would make a great Head in the clouds episode topic.
+
+CAUTION: It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work.
+
+
+
+In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!)
+
+Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report.
+
+Setting Up a Cloud Workstation
+
+Since this is Head in the Clouds, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration.
+
+NOTE: Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section.
+
+To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown:
+
+which terraform
+which git
+git clone https://github.com/Resistor52/tf-cloud-workstation.git
+cp terraform.tfvars.example terraform.tfvars
+
+
+Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this cloud-based workstation in depth.
+
+Next, run the following two commands and type ‘yes’ when prompted:
+
+terraform init
+terraform apply
+
+
+When the terraform script is done, it will display output that looks like:
+
+
+
+Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs.
+
+I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run
+
+tail -f /tmp/first-boot.log
+
+
+Review SaaS Provider’s ToS and AUP
+
+While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute.
+
+
+  Dropbox Terms of Service - https://www.dropbox.com/terms
+  Dropbox Acceptable Use Policy – https://www.dropbox.com/acceptable_use
+
+
+A quick review of the AUP indicates that Dropbox.com has a public Bug Bounty Program. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted.
+
+Installing the Zed Attack proxy
+
+Once we have an Ubuntu workstation running, we need to install Java…
+
+# Install OpenJDK Java
+sudo apt install -y default-jre
+
+
+and ZAP:
+
+# https://www.zaproxy.org/download/
+cd /tmp
+wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh
+sudo bash ZAP_2_10_0_unix.sh
+
+
+As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation.
+
+Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type:
+
+terraform output
+
+
+Great. Now RDP into the IP address shown using the displayed temporary credentials.
+
+Using ZAP
+
+Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox.
+
+To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it.
+
+Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being.
+
+Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. Only use the automated scan with permission or systems that you own and preferably in a non-production environment.
+
+Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session.
+
+In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.”
+
+We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org.
+
+Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.)
+
+Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox.
+
+Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com”
+
+Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings.
+
+Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form!
+
+Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it.
+
+Wrap Up
+
+That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings:
+
+
+  Missing security headers which do not lead directly to a vulnerability.
+  Missing best practices (we require evidence of a security vulnerability).
+  Use of a known-vulnerable library (without evidence of exploitability).
+
+
+It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here.
+
+Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization.
+
+SANS Has a whole course on Wep Application penetration Testing (SEC542) and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider.
+
+SANS also has a new course and certification on Cloud Penetration Testing, SEC588. Check that one out too.
+
+If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.
+
+If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”
+
+Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.
+
+Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel.
+
+Take care.
+">
+<meta property="og:url" content="/episodes/episode07/">
+<meta property="og:site_name" content="Head in the Clouds">
+
+<meta property="og:image" content="/images/default-thumb.png">
+
+
+
+
+
+
+<link rel="canonical" href="/episodes/episode07/">
+<link href="/feed.xml" type="application/atom+xml" rel="alternate" title="Head in the Clouds Feed">
+
+<!-- https://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<meta http-equiv="cleartype" content="on">
+
+
+<!-- Modernizr -->
+<script src="/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+
+<link href='//fonts.googleapis.com/css?family=PT+Sans+Narrow:400,700%7CPT+Serif:400,700,400italic' rel='stylesheet' type='text/css'>
+<link rel="stylesheet" href="/assets/css/academicons/css/academicons.css"/>
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="theme-color" content="#ffffff">
+
+<!--Jekyll-seo plugin-->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP | Head in the Clouds</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom! Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: SEC488: Cloud Security Essentials and SANS SEC510: Public Cloud Security - AWS, Azure, and GCP. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on. Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction. Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is OWASP Zed Attack Proxy (ZAP). As I worked on this project, it occurred that this would make a great Head in the clouds episode topic. CAUTION: It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work. In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!) Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report. Setting Up a Cloud Workstation Since this is Head in the Clouds, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration. NOTE: Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section. To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown: which terraform which git git clone https://github.com/Resistor52/tf-cloud-workstation.git cp terraform.tfvars.example terraform.tfvars Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this cloud-based workstation in depth. Next, run the following two commands and type ‘yes’ when prompted: terraform init terraform apply When the terraform script is done, it will display output that looks like: Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs. I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run tail -f /tmp/first-boot.log Review SaaS Provider’s ToS and AUP While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute. Dropbox Terms of Service - https://www.dropbox.com/terms Dropbox Acceptable Use Policy – https://www.dropbox.com/acceptable_use A quick review of the AUP indicates that Dropbox.com has a public Bug Bounty Program. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted. Installing the Zed Attack proxy Once we have an Ubuntu workstation running, we need to install Java… # Install OpenJDK Java sudo apt install -y default-jre and ZAP: # https://www.zaproxy.org/download/ cd /tmp wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh sudo bash ZAP_2_10_0_unix.sh As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation. Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type: terraform output Great. Now RDP into the IP address shown using the displayed temporary credentials. Using ZAP Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox. To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it. Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being. Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. Only use the automated scan with permission or systems that you own and preferably in a non-production environment. Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session. In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.” We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org. Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.) Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox. Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com” Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings. Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form! Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it. Wrap Up That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings: Missing security headers which do not lead directly to a vulnerability. Missing best practices (we require evidence of a security vulnerability). Use of a known-vulnerable library (without evidence of exploitability). It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here. Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization. SANS Has a whole course on Wep Application penetration Testing (SEC542) and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider. SANS also has a new course and certification on Cloud Penetration Testing, SEC588. Check that one out too. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<meta property="og:description" content="7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom! Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: SEC488: Cloud Security Essentials and SANS SEC510: Public Cloud Security - AWS, Azure, and GCP. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on. Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction. Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is OWASP Zed Attack Proxy (ZAP). As I worked on this project, it occurred that this would make a great Head in the clouds episode topic. CAUTION: It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work. In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!) Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report. Setting Up a Cloud Workstation Since this is Head in the Clouds, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration. NOTE: Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section. To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown: which terraform which git git clone https://github.com/Resistor52/tf-cloud-workstation.git cp terraform.tfvars.example terraform.tfvars Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this cloud-based workstation in depth. Next, run the following two commands and type ‘yes’ when prompted: terraform init terraform apply When the terraform script is done, it will display output that looks like: Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs. I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run tail -f /tmp/first-boot.log Review SaaS Provider’s ToS and AUP While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute. Dropbox Terms of Service - https://www.dropbox.com/terms Dropbox Acceptable Use Policy – https://www.dropbox.com/acceptable_use A quick review of the AUP indicates that Dropbox.com has a public Bug Bounty Program. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted. Installing the Zed Attack proxy Once we have an Ubuntu workstation running, we need to install Java… # Install OpenJDK Java sudo apt install -y default-jre and ZAP: # https://www.zaproxy.org/download/ cd /tmp wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh sudo bash ZAP_2_10_0_unix.sh As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation. Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type: terraform output Great. Now RDP into the IP address shown using the displayed temporary credentials. Using ZAP Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox. To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it. Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being. Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. Only use the automated scan with permission or systems that you own and preferably in a non-production environment. Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session. In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.” We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org. Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.) Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox. Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com” Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings. Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form! Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it. Wrap Up That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings: Missing security headers which do not lead directly to a vulnerability. Missing best practices (we require evidence of a security vulnerability). Use of a known-vulnerable library (without evidence of exploitability). It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here. Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization. SANS Has a whole course on Wep Application penetration Testing (SEC542) and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider. SANS also has a new course and certification on Cloud Penetration Testing, SEC588. Check that one out too. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care." />
+<link rel="canonical" href="http://localhost:4000/episodes/episode07/" />
+<meta property="og:url" content="http://localhost:4000/episodes/episode07/" />
+<meta property="og:site_name" content="Head in the Clouds" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-05-24T15:17:05-03:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-05-24T14:59:39-03:00","datePublished":"2022-05-24T15:17:05-03:00","description":"7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum. Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP” The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors. Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom! Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: SEC488: Cloud Security Essentials and SANS SEC510: Public Cloud Security - AWS, Azure, and GCP. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on. Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction. Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is OWASP Zed Attack Proxy (ZAP). As I worked on this project, it occurred that this would make a great Head in the clouds episode topic. CAUTION: It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work. In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!) Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report. Setting Up a Cloud Workstation Since this is Head in the Clouds, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration. NOTE: Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section. To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown: which terraform which git git clone https://github.com/Resistor52/tf-cloud-workstation.git cp terraform.tfvars.example terraform.tfvars Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this cloud-based workstation in depth. Next, run the following two commands and type ‘yes’ when prompted: terraform init terraform apply When the terraform script is done, it will display output that looks like: Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs. I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run tail -f /tmp/first-boot.log Review SaaS Provider’s ToS and AUP While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute. Dropbox Terms of Service - https://www.dropbox.com/terms Dropbox Acceptable Use Policy – https://www.dropbox.com/acceptable_use A quick review of the AUP indicates that Dropbox.com has a public Bug Bounty Program. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted. Installing the Zed Attack proxy Once we have an Ubuntu workstation running, we need to install Java… # Install OpenJDK Java sudo apt install -y default-jre and ZAP: # https://www.zaproxy.org/download/ cd /tmp wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh sudo bash ZAP_2_10_0_unix.sh As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation. Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type: terraform output Great. Now RDP into the IP address shown using the displayed temporary credentials. Using ZAP Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox. To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it. Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being. Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. Only use the automated scan with permission or systems that you own and preferably in a non-production environment. Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session. In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.” We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org. Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.) Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox. Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com” Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings. Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form! Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it. Wrap Up That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings: Missing security headers which do not lead directly to a vulnerability. Missing best practices (we require evidence of a security vulnerability). Use of a known-vulnerable library (without evidence of exploitability). It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here. Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization. SANS Has a whole course on Wep Application penetration Testing (SEC542) and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider. SANS also has a new course and certification on Cloud Penetration Testing, SEC588. Check that one out too. If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video. If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.” Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed. Meanwhile, be sure to check out the other great videos on the SANS Cloud Security YouTube Channel. Take care.","headline":"Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/episodes/episode07/"},"url":"http://localhost:4000/episodes/episode07/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-K6EX94SG73"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-K6EX94SG73');
+</script>
+
+
+</head>
+
+<body class="page">
+
+<!--[if lt IE 9]><div class="browser-upgrade alert alert-info">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience.</div><![endif]-->
+
+<div class="navigation-wrapper">
+	<div class="site-name">
+		
+		<a href="/">Head in the Clouds</a>
+		
+	</div><!-- /.site-name -->
+	<div class="top-navigation">
+		<nav role="navigation" id="site-nav" class="nav">
+		    <ul>
+		        
+				    
+				    <li><a href="/" >Home</a></li>
+				
+				    
+				    <li><a href="/episodes/" >All Episodes</a></li>
+				
+				    
+				    <li><a href="https://www.sans.org/cyber-security-courses/?focus-area=cloud-security" target="_blank">SANS CyberSec Courses & Certs</a></li>
+				
+		    </ul>
+		</nav>
+	</div><!-- /.top-navigation -->
+</div><!-- /.navigation-wrapper -->
+
+
+
+
+<div id="main" role="main">
+  <div class="article-author-side">
+    
+
+<div itemscope itemtype="https://schema.org/Person">
+
+
+	<img src="/images/Cloud_Ace_Final.png" class="bio-photo" alt="Head in the Clouds bio photo">
+
+
+  <h3 itemprop="name">Head in the Clouds</h3>
+  <p>with Kenneth G. Hartman<p>Certified SANS Instructor</p>
+  <a href="mailto:kgh@kennethghartman.com" class="author-social" target="_blank"><i class="fa fa-fw fa-envelope-square"></i> Email</a>
+  <a href="https://twitter.com/kennethghartman" class="author-social" target="_blank"><i class="fa fa-fw fa-twitter-square"></i> Twitter</a>
+  
+  
+  
+  
+  
+  
+  
+  <a href="https://github.com/Resistor52" class="author-social" target="_blank"><i class="fa fa-fw fa-github"></i> GitHub</a>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+</div>
+
+  </div>
+  <article class="page">
+    <h1>Episode 7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP</h1>
+    <div class="article-wrap">
+      <p>7 - Passively Evaluate a SaaS Provider’s AppSec using ZAP</p>
+
+<div class="video-container"><iframe width="560" height="315" src="https://www.youtube.com/embed/kGGYuH-68A4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+
+<p>Welcome to Episode 7 of the “Head in the Clouds” Video Series. I am Ken Hartman, a SANS Certified Instructor and content creator for the SANS Cloud Security Curriculum.</p>
+
+<p>Today’s episode is titled: “Passively Evaluate a SaaS Provider’s AppSec using ZAP”</p>
+
+<p>The purpose of HITC is to teach foundational cloud skills and security knowledge that will help others thrive in the cloud. The content ideas come from my personal observation of skills that I see some students lacking when they show up to a SANS Cloud Security course. Other ideas are passed on from fellow SANS instructors.</p>
+
+<p>Today’s topic draws from some private consulting work I was doing last week for a client concerned about the threat of ransomware. This particular client is in a niche and uses some specialty Software-as-a-Service (SaaS) solutions that are unique to their niche. Some people may have the mistaken belief that to mitigate ransomware all one needs to do to is ensure that there are good backups generated on a regular basis. However, a good backup does not prevent the attacker from dumping all of your sensitive data on the public internet, regardless of whether you pay the ransom!</p>
+
+<p>Therefore, the best mitigation against ransomware is strong access control. This includes multi-factor authentication and protecting against credential compromise. We cover this in depth in the two SANS Cloud Security Courses that I teach: <a href="https://www.sans.org/cyber-security-courses/cloud-security-essentials/">SEC488: Cloud Security Essentials</a> and <a href="https://www.sans.org/cyber-security-courses/public-cloud-security-aws-azure-gcp/">SANS SEC510: Public Cloud Security - AWS, Azure, and GCP</a>. As part of my engagement, I made several recommendations—including the benefits of using single-sign-on.</p>
+
+<p>Now, by no means did I intend to imply that backups are not important. They are an essential part of any business continuity strategy, and not just continuing business if ransomware attacks. The SaaS provider that my client uses does not have a documented API. Therefore, to generate a database backup, an admin user must generate one via the web console. My client wished to have that process automated so that it could happen on a frequent periodic basis without relying on human interaction.</p>
+
+<p>Python has a module called “requests” that is ideal for this type of task, but to write the code, I needed to spy on the HTTPS traffic. The tool of choice for this is an “intercepting proxy” and a great, open source option is <strong><a href="https://owasp.org/www-project-zap/">OWASP Zed Attack Proxy (ZAP)</a></strong>. As I worked on this project, it occurred that this would make a great <em>Head in the clouds</em> episode topic.</p>
+
+<p><strong>CAUTION:</strong> It is not appropriate to actively scan computer systems that you do not own without permission and may be outright illegal. Consult a legal expert before doing any sort of security testing. I am not a legal expert and laws vary by jurisdiction. Neither I, nor SANS can be held liable for any security testing that you perform, so make sure that you follow the laws where you live and work.</p>
+
+<p><img src="/images/ep7/warning.png" alt="Image Security Testing Warning" /></p>
+
+<p>In this episode, I will be demonstrating the technique of passive scanning while using a SaaS application as a normal user with a web browser. ZAP will not be used to scan or attack the SaaS provider, although those are amazing capabilities of this security tool. ZAP will simply be inspecting the traffic that flows through it as the proxy and identifying any security issues during normal usage. Not only is the fact that you are using ZAP virtually undetectable by the web application (when used in this manner), it should be totally appropriate, assuming you are using your web browser according to the SaaS provider’s terms of service and acceptable use policy. (Just remember, I am not a lawyer, so talk to yours!)</p>
+
+<p>Great, the agenda for the remainder of this episode is to first get ZAP installed and then we will have it proxy our interactions with a cloud service provider. Lastly, we will take a look at the findings and generate a report.</p>
+
+<h2 id="setting-up-a-cloud-workstation">Setting Up a Cloud Workstation</h2>
+
+<p>Since this is <strong><em>Head in the Clouds</em></strong>, lets use a cloud-based Ubuntu workstation. Fortunately, I have a Terraform script that can deploy one for you quite easily. I like to use cloud-based workstations for projects and experiments because I know that I am always starting from a known configuration.</p>
+
+<p><strong>NOTE:</strong> Rather than running terraform to deploy a cloud-based workstation, you may use an Ubuntu Desktop VM running locally, in VMWare for example. Just skip this section.</p>
+
+<p>To deploy the cloud workstation, open the terminal on a system that has terraform and git installed and clone down the project as shown:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>which terraform
+which git
+git clone https://github.com/Resistor52/tf-cloud-workstation.git
+cp terraform.tfvars.example terraform.tfvars
+</code></pre></div></div>
+
+<p>Next, modify the ` terraform.tfvars` file as appropriate for your AWS environment. If you need more information on how to do this or are curious about how Terraform or Git works, I would encourage you to watch my Tech Tuesday video where I cover this <a href="https://www.youtube.com/watch?v=5L6yxXXn0-I">cloud-based workstation in depth</a>.</p>
+
+<p>Next, run the following two commands and type ‘yes’ when prompted:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform init
+terraform apply
+</code></pre></div></div>
+
+<p>When the terraform script is done, it will display output that looks like:</p>
+
+<p><img src="/images/ep7/terraform_output.png" alt="Terraform output" /></p>
+
+<p>Just remember, that the initialization script that is updating the operating system and installing Ubuntu desktop still takes a little time to finish, so you will not be able to RDP quite yet. So, SSH instead using the string that is displayed in the Terraform outputs.</p>
+
+<p>I like to monitor the initialization script so that I can tell when the setup has completed. To do that I run</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tail -f /tmp/first-boot.log
+</code></pre></div></div>
+
+<h2 id="review-saas-providers-tos-and-aup">Review SaaS Provider’s ToS and AUP</h2>
+
+<p>While our cloud workstation initializes and just out of the abundance of caution, let’s pause for a moment and review our SaaS Provider’s Terms of Service (ToS) and Acceptable Use Policy (AUP) to make sure that we are operating above-board. For our example, we will be using Dropbox.com. Dropbox.com is a mature provider and since we just want to demonstrate a technique and not embarrass any company, I chose Dropbox—for reasons that will become apparent in a minute.</p>
+
+<ul>
+  <li>Dropbox Terms of Service - <a href="https://www.dropbox.com/terms">https://www.dropbox.com/terms</a></li>
+  <li>Dropbox Acceptable Use Policy – <a href="https://www.dropbox.com/acceptable_use">https://www.dropbox.com/acceptable_use</a></li>
+</ul>
+
+<p>A quick review of the AUP indicates that Dropbox.com has a public <a href="https://hackerone.com/dropbox">Bug Bounty Program</a>. Generally speaking, a company that has a bug bounty program that has been active for a while will have an application security program that is mature enough to prevent the company from going broke by paying out bounties. The presence of this program (which allows active scanning) also means that the passive technique that I will be demonstrating today is permitted.</p>
+
+<h2 id="installing-the-zed-attack-proxy">Installing the Zed Attack proxy</h2>
+
+<p>Once we have an Ubuntu workstation running, we need to install Java…</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Install OpenJDK Java
+sudo apt install -y default-jre
+</code></pre></div></div>
+
+<p>and ZAP:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># https://www.zaproxy.org/download/
+cd /tmp
+wget https://github.com/zaproxy/zaproxy/releases/download/v2.10.0/ZAP_2_10_0_unix.sh
+sudo bash ZAP_2_10_0_unix.sh
+</code></pre></div></div>
+
+<p>As ZAP installs, it will prompt you to accept the license agreement and to select the type of installation. Choose [1] for the standard installation.</p>
+
+<p>Once that is complete, we can exit the SSH session and RDP in. As a reminder, to see the RDP user name and password, just type:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>terraform output
+</code></pre></div></div>
+
+<p>Great. Now RDP into the IP address shown using the displayed temporary credentials.</p>
+
+<h2 id="using-zap">Using ZAP</h2>
+
+<p>Since this is a brand-new installation, we need to first launch Firefox and accept all the initialization agreements so that Firefox will play nice with ZAP. Make Firefox your default browser and click “not now” for the rest of the prompts. Having done that, close Firefox.</p>
+
+<p>To launch ZAP, click on the menu in the top left corner and search for “zap.” Then click on “OWASP ZAP” to launch it.</p>
+
+<p>Once ZAP launches, you will be prompted with an option to persist the ZAP session. Choose “no” for the time being.</p>
+
+<p>Since we want to do a passive scan while interacting with our SaaS provider as a normal user, we will choose the “Manual Explore” option. Do not choose the automated scan, as that will start the spider which will crawl the web application and will start to inject potentially abusive data into the application. An automated scan may find more issues, but it can also break things. <strong>Only use the automated scan with permission or systems that you own</strong> and preferably in a non-production environment.</p>
+
+<p>Enter in the URL of the SaaS provider (https://dropbox.com) and then click “Launch Browser.” This time when Firefox launches it will be automatically configured to use ZAP as its proxy and will trust the ZAP SSL certificate that ZAP uses to MitM the HTTPS session.</p>
+
+<p>In a moment, the splash page for the ZAP Heads Up Display will appear. You may want to take the HUD Tutorial, but I will click “Continue to your target.”</p>
+
+<p>We can see a few colored flags on the sides. These are alerts. Without closing Firefox, switch over to ZAP, and we can see all of the sites that Firefox has contacted. Most of these are referenced from the Dropbox.com HTTP content, but a few may be from Firefox itself as it phones home to mozzila.org.</p>
+
+<p>Let’s switch back to Firefox and use Dropbox some. Click a few menu items and then sign in. (Register an account if you do not have one.)</p>
+
+<p>Upload and download an item while you are at it. After you are done playing around and exploring all of the Dropbox functionality, close Firefox.</p>
+
+<p>Next take a look at the all of the Sites that ZAP captured. Delete the ones that do not end in “dropbox.com” or “dropboxstatic.com”</p>
+
+<p>Click on the “Alerts” tab and notice that there are some alerts including a “Vulnerable JS Library” and multiple different cross-domain warnings.</p>
+
+<p>Going back up and expanding the “Sites” object tree, we can see one called “POST:ajax_login().” Take a look at the request and the response messages. Very cool. It looks like the ajax wrapped my password with a public key before posting it with the other data on the login form!</p>
+
+<p>Before we wrap up, Let’s generate a report on the findings, via the “Report” menu. Note that several file format options are available. For now, select “Generate HTML Report…” and take a look at it.</p>
+
+<h2 id="wrap-up">Wrap Up</h2>
+
+<p>That’s it! Now you a good technique for passively inspecting a SaaS provider’s application security. However, remember that these are just findings generated by a tool! They are not necessarily exploitable vulnerabilities. In fact, let’s take another look at the Dropbox Bug Bounty program guidelines. They state a couple of bullet points defining out of scope items that are applicable to our findings:</p>
+
+<ul>
+  <li>Missing security headers which do not lead directly to a vulnerability.</li>
+  <li>Missing best practices (we require evidence of a security vulnerability).</li>
+  <li>Use of a known-vulnerable library (without evidence of exploitability).</li>
+</ul>
+
+<p>It is reasonable to assume that these items have been added to the program guidelines based on multiple conversations with security researchers who have used intercepting proxies like ZAP or Burp. It is also highly likely that Dropbox has mitigating controls and countermeasures to reduce the risk of the things we discovered today. But perhaps not, and that is why they have a Bug Bounty Program after all. However, we are going to stop our investigation here.</p>
+
+<p>Remember, I chose Dropbox for this demo because they have a mature security program and a bug bounty. However, your niche SaaS provider may not have either! Remember that just because there are findings from a tool does not mean that the vendor is screwing up, they are simply discussion points that allow you to delve into your vendor’s AppSec. Always conduct these discussions from a posture of mutual respect and curiosity, rather than patronization.</p>
+
+<p>SANS Has a whole course on <a href="https://www.sans.org/cyber-security-courses/web-app-penetration-testing-ethical-hacking/">Wep Application penetration Testing (SEC542)</a> and that course goes much deeper into how to use both ZAP and Burp, the two most popular intercepting proxies. Remember that SaaS is just a web application hosted by a cloud service provider.</p>
+
+<p>SANS also has a new course and certification on <a href="https://www.sans.org/cyber-security-courses/cloud-penetration-testing/">Cloud Penetration Testing, SEC588</a>. Check that one out too.</p>
+
+<p>If you have thoughts or comments on today’s episode, feel free to chime in on the comments for this YouTube video.</p>
+
+<p>If you appreciate this video and want to see more like it, be sure to give it a “thumbs up.”</p>
+
+<p>Stay tuned for another installment of “Head in the Clouds” as announcements of new episodes are made on the SANS Cloud Security Twitter feed.</p>
+
+<p>Meanwhile, be sure to check out the other great videos on the <a href="https://www.youtube.com/c/SANSCloudSecurity">SANS Cloud Security YouTube Channel</a>.</p>
+
+<p>Take care.</p>
+
+      
+        <hr />
+        <div class="social-share">
+  <!--<h4>Share on</h4>
+  <ul>
+    <li>
+      <a href="https://twitter.com/intent/tweet?text=/episodes/episode07/" class="twitter" title="Share on Twitter"><i class="fa fa-twitter"></i><span> Twitter</span></a>
+    </li>
+    <li>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=/episodes/episode07/" class="facebook" title="Share on Facebook"><i class="fa fa-facebook"></i><span> Facebook</span></a>
+    </li>
+    <li>
+      <a href="https://plus.google.com/share?url=/episodes/episode07/" class="google-plus" title="Share on Google Plus"><i class="fa fa-google-plus"></i><span> Google+</span></a>
+    </li>
+  </ul>-->
+</div><!-- /.social-share -->
+
+      
+    </div><!-- /.article-wrap -->
+    
+  </article>
+</div><!-- /#index -->
+
+<div class="footer-wrap">
+  <footer>
+    
+
+<span>&copy; 2022 Head in the Clouds.<br /></span>
+
+
+  </footer>
+</div><!-- /.footer-wrap -->
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="/assets/js/scripts.min.js"></script>
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+  var _gaq = _gaq || [];
+  var pluginUrl =
+ '//www.google-analytics.com/plugins/ga/inpage_linkid.js';
+  _gaq.push(['_require', 'inpage_linkid', pluginUrl]);
+  _gaq.push(['_setAccount', 'UA-25220220-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'https://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+
+
+</body>
+</html>
