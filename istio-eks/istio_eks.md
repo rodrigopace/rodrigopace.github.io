@@ -20,7 +20,7 @@
     echo 'source > (kubectl completion bash)' >> ~/.bashrc
     kubectl version --client --output=yaml
 
-**3 – In your computer&#39;s CLI, follow the instructions below to install eksctl (~2 minutes).**
+**3 – In your computer's CLI, follow the instructions below to install eksctl (~2 minutes).**
 
 For further information, see:[**https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html**](https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html)
 
