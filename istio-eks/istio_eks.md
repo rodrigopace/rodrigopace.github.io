@@ -1,4 +1,4 @@
-**SET UP AWS-CLI, KUBECTL, EKSCTL, EKS (K8S in AWS), GO BINARY AND AWS-IAM-AUTHENTICATOR**
+#*SET UP AWS-CLI, KUBECTL, EKSCTL, EKS (K8S in AWS), GO BINARY AND AWS-IAM-AUTHENTICATOR*
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install aws-cli (~2 minutes).**
 
