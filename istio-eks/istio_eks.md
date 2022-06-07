@@ -24,13 +24,13 @@
 
 For further information, see:[**https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html**](https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html)
 
-    curl --silent --location &quot;https://github.com/weaveworks/eksctl/releases/latest/download/eksctl\_$(uname -s)\_amd64.tar.gz&quot; \| tar xz -C /tmp
+    curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl\_$(uname -s)\_amd64.tar.gz" \| tar xz -C /tmp
     sudo mv /tmp/eksctl /usr/local/bin
     eksctl version
 
-**4 – In your computer&#39;s CLI, follow the instructions below to set up the EKS cluster in AWS (~10 minutes).**
+**4 – In your computer's CLI, follow the instructions below to set up the EKS cluster in AWS (~10 minutes).**
 
-    eksctl create cluster --region sa-east-1 \--name istio-on-eks \--nodes 2 \--ssh-public-key &quot;~/.ssh/id\_rsa.pub&quot; \--profile aws-dasa-security-hml
+    eksctl create cluster --region sa-east-1 \--name istio-on-eks \--nodes 2 \--ssh-public-key"~/.ssh/id\_rsa.pub" \--profile aws-dasa-security-hml
 
 ![](images/01-istio-eks.png)
 
