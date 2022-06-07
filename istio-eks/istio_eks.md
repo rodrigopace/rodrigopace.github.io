@@ -38,10 +38,10 @@ For further information, see:[**https://docs.aws.amazon.com/eks/latest/userguide
 
 For further information, see: [https://go.dev/doc/install](https://go.dev/doc/install)
 
-In your computer&#39;s CLI, type the follow commands:
+In your computer's CLI, type the follow commands:
 
      sudo rm -rf /usr/local/go
-     curl --silent --location &quot;https://dl.google.com/go/go1.18.2.linux-amd64.tar.gz&quot; --output go1.18.2.linux-amd64.tar.gz
+     curl --silent --location "https://dl.google.com/go/go1.18.2.linux-amd64.tar.gz" --output go1.18.2.linux-amd64.tar.gz
      sudo tar -C /usr/local -xzf go1.18.2.linux-amd64.tar.gz
      export PATH=$PATH:/usr/local/go/bin
      go version
@@ -61,7 +61,7 @@ Once all settings above have been done, let&#39;s start HELM + TILLER + Istio se
 
 ## SET UP HELM + TILLER
 
-**1 – In your computer&#39;s CLI, follow the instructions below to install HELM (~2 minutes).**
+**1 – In your computer's CLI, follow the instructions below to install HELM (~2 minutes).**
 
 For further information, see: [**https://v2.helm.sh/docs/using\_helm/#installing-helm**](https://v2.helm.sh/docs/using_helm/#installing-helm)
 
@@ -71,7 +71,7 @@ For further information, see: [**https://v2.helm.sh/docs/using\_helm/#installing
     sudo apt-get update
     sudo apt-get install helm2
 
-**2 - In your computer&#39;s CLI, follow the instructions below to install the service account for Tiller&#39;s access (~5 minutes).**
+**2 - In your computer&#39;s CLI, follow the instructions below to install the service account for Tiller's access (~5 minutes).**
 
     vim rbac-config.yaml
 
@@ -104,7 +104,7 @@ Then execute the following commands:
 
 ## SET UP ISTIO 
 
-**1 – In your computer&#39;s CLI, follow the instructions below to install ISTIO (~7 minutes).**
+**1 – In your computer's CLI, follow the instructions below to install ISTIO (~7 minutes).**
 
     curl -L https://istio.io/downloadIstio \| sh -
     export PATH="$PATH:~/EKSLAB/istio-1.13.3/bin"
@@ -119,17 +119,17 @@ Then execute the following commands:
 
 ## SET UP APPLICATION BOOKINFO
 
-**1 – In your computer&#39;s CLI, follow the instructions below to install bookinfo app (~5 minutes).**
+**1 – In your computer's CLI, follow the instructions below to install bookinfo app (~5 minutes).**
 
     kubectl apply -f ~/EKSLAB/istio-1.13.3/samples/bookinfo/platform/kube/bookinfo.yaml
     kubectl apply -f ~/EKSLAB/istio-1.13.3/samples/bookinfo/networking/bookinfo-gateway.yaml
 
 ## ACCESS THE APPLICATION BOOKINFO
 
-**1 – In your computer&#39;s CLI, follow the instructions below to get the app&#39;s URL (~2 minutes).**
+**1 – In your computer's CLI, follow the instructions below to get the app's URL (~2 minutes).**
 
-    export INGRESS\_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath=&#39;{.status.loadBalancer.ingress[0].hostname}&#39;)
-    export INGRESS\_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath=&#39;{.spec.ports[?(@.name=="http2")].port}&#39;)
+    export INGRESS\_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    export INGRESS\_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
     export GATEWAY\_URL=$INGRESS\_HOST:$INGRESS\_PORT
     echo $GATEWAY\_URL/productpage
 
