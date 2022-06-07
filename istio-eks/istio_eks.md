@@ -1,4 +1,4 @@
-#SET UP AWS-CLI, KUBECTL, EKSCTL, EKS (K8S in AWS), GO BINARY AND AWS-IAM-AUTHENTICATOR
+# SET UP AWS-CLI, KUBECTL, EKSCTL, EKS (K8S in AWS), GO BINARY AND AWS-IAM-AUTHENTICATOR
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install aws-cli (~2 minutes).**
 
@@ -63,7 +63,7 @@ In your computer&#39;s CLI, type the follow commands:
 
 Once all settings above have been done, let&#39;s start HELM + TILLER + Istio setup.
 
-**SET UP HELM + TILLER**
+## SET UP HELM + TILLER
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install HELM (~2 minutes).**
 
@@ -87,7 +87,7 @@ apiVersion: v1kind: ServiceAccountmetadata:name: tillernamespace: kube-system---
 | helm init --service-account tiller --history-max 200 |
 | kubectl get serviceaccounts --all-namespaces | grep -i &quot;tiller&quot; |
 
-**SET UP ISTIO**
+## SET UP ISTIO 
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install ISTIO (~7 minutes).**
 
@@ -103,7 +103,7 @@ apiVersion: v1kind: ServiceAccountmetadata:name: tillernamespace: kube-system---
 | kubectl label namespace default istio-injection=enabled |
 | kubectl get namespace --all-namespaces |
 
-**SET UP APPLICATION BOOKINFO**
+## SET UP APPLICATION BOOKINFO
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install bookinfo app (~5 minutes).**
 
@@ -111,7 +111,7 @@ apiVersion: v1kind: ServiceAccountmetadata:name: tillernamespace: kube-system---
 | --- |
 | kubectl apply -f ~/EKSLAB/istio-1.13.3/samples/bookinfo/networking/bookinfo-gateway.yaml |
 
-**ACCESS THE APPLICATION BOOKINFO**
+## ACCESS THE APPLICATION BOOKINFO
 
 **1 – In your computer&#39;s CLI, follow the instructions below to get the app&#39;s URL (~2 minutes).**
 
@@ -125,7 +125,7 @@ Once you have successfully deployed the application, open your browser and type 
 
 ![](images/02-istio-eks.png)
 
-**TRAFFIC ROUTING WITH ISTIO**
+## TRAFFIC ROUTING WITH ISTIO
 
 **1 – In your computer&#39;s CLI, follow the instructions below to manipulate the routing to the application Bookinfo (~5 minutes).**
 
