@@ -17,7 +17,7 @@
     curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
     curl -LO https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl
     sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-    echo &#39;source \&lt;(kubectl completion bash)&#39; \&gt;\&gt;~/.bashrc
+    echo 'source > (kubectl completion bash)' >> ~/.bashrc
     kubectl version --client --output=yaml
 
 **3 – In your computer&#39;s CLI, follow the instructions below to install eksctl (~2 minutes).**
