@@ -3,7 +3,7 @@
 **1 – In your computer&#39;s CLI, follow the instructions below to install aws-cli (~2 minutes).**
 
     mkdir EKSLAB ; cd EKSLAB
-    curl &quot;https://awscli.amazonaws.com/awscli-exe-linux-x86\_64.zip&quot; -o &quot;awscliv2.zip&quot;
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86\_64.zip" -o "awscliv2.zip"
     unzip awscliv2.zip
     sudo ./aws/install
 
