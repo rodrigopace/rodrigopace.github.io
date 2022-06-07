@@ -3,7 +3,7 @@
 **1 – In your computer&#39;s CLI, follow the instructions below to install aws-cli (~2 minutes).**
 
     mkdir EKSLAB ; cd EKSLAB
-    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86\_64.zip" -o "awscliv2.zip"
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
     unzip awscliv2.zip
     sudo ./aws/install
 
@@ -24,13 +24,13 @@
 
 For further information, see:[**https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html**](https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html)
 
-    curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl\_$(uname -s)\_amd64.tar.gz" \| tar xz -C /tmp
+    curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl\_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
     sudo mv /tmp/eksctl /usr/local/bin
     eksctl version
 
 **4 – In your computer's CLI, follow the instructions below to set up the EKS cluster in AWS (~10 minutes).**
 
-    eksctl create cluster --region sa-east-1 \--name istio-on-eks \--nodes 2 \--ssh-public-key"~/.ssh/id\_rsa.pub" \--profile aws-dasa-security-hml
+    eksctl create cluster --region sa-east-1 --name istio-on-eks --nodes 2 --ssh-public-key"~/.ssh/id_rsa.pub" --profile aws-dasa-security-hml
 
 ![](images/01-istio-eks.png)
 
@@ -53,7 +53,7 @@ In your computer's CLI, type the follow commands:
 **7 – Follow the instructions below to check the communication with EKS (~2 minutes).**
 
     rm -f ~/.kube/config
-    aws eks update-kubeconfig \--region sa-east-1 \--name istio-on-eks \--profile aws-dasa-security-hml
+    aws eks update-kubeconfig --region sa-east-1 --name istio-on-eks --profile aws-dasa-security-hml
     kubectl get nodes
     kubectl get pods --all-namespaces
 
@@ -65,9 +65,9 @@ Once all settings above have been done, let&#39;s start HELM + TILLER + Istio se
 
 For further information, see: [**https://v2.helm.sh/docs/using\_helm/#installing-helm**](https://v2.helm.sh/docs/using_helm/#installing-helm)
 
-    curl https://baltocdn.com/helm/signing.asc \| sudo apt-key add -
+    curl https://baltocdn.com/helm/signing.asc | sudo apt-key add -
     sudo apt-get install apt-transport-https --yes
-    echo "deb https://baltocdn.com/helm/stable/debian/ all main" \| sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+    echo "deb https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
     sudo apt-get update
     sudo apt-get install helm2
 
@@ -98,15 +98,15 @@ Paste the follow and save:
 
 Then execute the following commands:
 
-    kubectl apply -f rbac-config.yaml |
-    helm init --service-account tiller --history-max 200 |
-    kubectl get serviceaccounts --all-namespaces \| grep -i "tiller" |
+    kubectl apply -f rbac-config.yaml
+    helm init --service-account tiller --history-max 200
+    kubectl get serviceaccounts --all-namespaces \| grep -i "tiller"
 
 ## SET UP ISTIO 
 
 **1 – In your computer's CLI, follow the instructions below to install ISTIO (~7 minutes).**
 
-    curl -L https://istio.io/downloadIstio \| sh -
+    curl -L https://istio.io/downloadIstio | sh -
     export PATH="$PATH:~/EKSLAB/istio-1.13.3/bin"
     helm repo add istio [https://istio-release.storage.googleapis.com/charts](https://istio-release.storage.googleapis.com/charts)
     helm repo update
@@ -128,10 +128,10 @@ Then execute the following commands:
 
 **1 – In your computer's CLI, follow the instructions below to get the app's URL (~2 minutes).**
 
-    export INGRESS\_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-    export INGRESS\_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
-    export GATEWAY\_URL=$INGRESS\_HOST:$INGRESS\_PORT
-    echo $GATEWAY\_URL/productpage
+    export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
+    export GATEWAY_URL=$INGRESS_HOST:$INGRESS_PORT
+    echo $GATEWAY_URL/productpage
 
 Once you have successfully deployed the application, open your browser and type the URL obtained previously. The follow page will be displayed on your browser:
 
