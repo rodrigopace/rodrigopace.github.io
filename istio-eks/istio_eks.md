@@ -91,7 +91,7 @@ apiVersion: v1kind: ServiceAccountmetadata:name: tillernamespace: kube-system---
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install ISTIO (~7 minutes).**
 
-| curl -L https://istio.io/downloadIstio | sh - |
+| curl -L https://istio.io/downloadIstio \| sh - |
 | --- |
 | export PATH=&quot;$PATH:~/EKSLAB/istio-1.13.3/bin&quot; |
 | helm repo add istio [https://istio-release.storage.googleapis.com/charts](https://istio-release.storage.googleapis.com/charts) |
