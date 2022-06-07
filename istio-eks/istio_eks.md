@@ -48,7 +48,7 @@ In your computer&#39;s CLI, type the follow commands:
 
 **6 – After go has been installed, another binary must be installed using go (~10 minutes).**
 
-    go install sigs.k8s.io/aws-iam-authenticator/cmd/aws-iam-authenticator@master |
+    go install sigs.k8s.io/aws-iam-authenticator/cmd/aws-iam-authenticator@master
 
 **7 – Follow the instructions below to check the communication with EKS (~2 minutes).**
 
@@ -67,7 +67,7 @@ For further information, see: [**https://v2.helm.sh/docs/using\_helm/#installing
 
     curl https://baltocdn.com/helm/signing.asc \| sudo apt-key add -
     sudo apt-get install apt-transport-https --yes
-    echo &quot;deb https://baltocdn.com/helm/stable/debian/ all main&quot; \| sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+    echo "deb https://baltocdn.com/helm/stable/debian/ all main" \| sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
     sudo apt-get update
     sudo apt-get install helm2
 
@@ -100,14 +100,14 @@ Then execute the following commands:
 
     kubectl apply -f rbac-config.yaml |
     helm init --service-account tiller --history-max 200 |
-    kubectl get serviceaccounts --all-namespaces \| grep -i &quot;tiller&quot; |
+    kubectl get serviceaccounts --all-namespaces \| grep -i "tiller" |
 
 ## SET UP ISTIO 
 
 **1 – In your computer&#39;s CLI, follow the instructions below to install ISTIO (~7 minutes).**
 
     curl -L https://istio.io/downloadIstio \| sh -
-    export PATH=&quot;$PATH:~/EKSLAB/istio-1.13.3/bin&quot;
+    export PATH="$PATH:~/EKSLAB/istio-1.13.3/bin"
     helm repo add istio [https://istio-release.storage.googleapis.com/charts](https://istio-release.storage.googleapis.com/charts)
     helm repo update
     kubectl create namespace istio-system
@@ -129,7 +129,7 @@ Then execute the following commands:
 **1 – In your computer&#39;s CLI, follow the instructions below to get the app&#39;s URL (~2 minutes).**
 
     export INGRESS\_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath=&#39;{.status.loadBalancer.ingress[0].hostname}&#39;)
-    export INGRESS\_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath=&#39;{.spec.ports[?(@.name==&quot;http2&quot;)].port}&#39;)
+    export INGRESS\_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath=&#39;{.spec.ports[?(@.name=="http2")].port}&#39;)
     export GATEWAY\_URL=$INGRESS\_HOST:$INGRESS\_PORT
     echo $GATEWAY\_URL/productpage
 
