@@ -23,7 +23,7 @@ curl -LO https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl |
 
 For further information, see:[**https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html**](https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html)
 
-| curl --silent --location &quot;https://github.com/weaveworks/eksctl/releases/latest/download/eksctl\_$(uname -s)\_amd64.tar.gz&quot; | tar xz -C /tmp |
+| curl --silent --location &quot;https://github.com/weaveworks/eksctl/releases/latest/download/eksctl\_$(uname -s)\_amd64.tar.gz&quot; \| tar xz -C /tmp |
 | --- |
 | sudo mv /tmp/eksctl /usr/local/bin |
 | eksctl version |
@@ -69,10 +69,10 @@ Once all settings above have been done, let&#39;s start HELM + TILLER + Istio se
 
 For further information, see: [**https://v2.helm.sh/docs/using\_helm/#installing-helm**](https://v2.helm.sh/docs/using_helm/#installing-helm)
 
-| curl https://baltocdn.com/helm/signing.asc | sudo apt-key add - |
+| curl https://baltocdn.com/helm/signing.asc \| sudo apt-key add - |
 | --- |
 | sudo apt-get install apt-transport-https --yes |
-| echo &quot;deb https://baltocdn.com/helm/stable/debian/ all main&quot; | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list |
+| echo &quot;deb https://baltocdn.com/helm/stable/debian/ all main&quot; \| sudo tee /etc/apt/sources.list.d/helm-stable-debian.list |
 | sudo apt-get update |
 | sudo apt-get install helm2 |
 
@@ -85,7 +85,7 @@ apiVersion: v1kind: ServiceAccountmetadata:name: tillernamespace: kube-system---
 | --- |
 | kubectl apply -f rbac-config.yaml |
 | helm init --service-account tiller --history-max 200 |
-| kubectl get serviceaccounts --all-namespaces | grep -i &quot;tiller&quot; |
+| kubectl get serviceaccounts --all-namespaces \| grep -i &quot;tiller&quot; |
 
 ## SET UP ISTIO 
 
